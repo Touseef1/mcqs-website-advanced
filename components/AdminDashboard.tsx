@@ -17,6 +17,7 @@ type Tab = "overview" | "questions" | "categories" | "papers" | "team";
 type QuestionForm = { topicId: string; prompt: string; choices: string[]; correctChoice: string; explanation: string; sourceNote: string; difficulty: "easy" | "medium" | "hard"; status: "draft" | "published" };
 const blankQuestion: QuestionForm = { topicId: "", prompt: "", choices: ["", "", "", ""], correctChoice: "", explanation: "", sourceNote: "", difficulty: "medium", status: "draft" };
 const tabLabels: Record<Tab, string> = { overview: "Overview", questions: "MCQ bank", categories: "Categories", papers: "Past papers", team: "Team & roles" };
+const tabIcons: Record<Tab, string> = { overview: "▦", questions: "☷", categories: "◈", papers: "▤", team: "♙" };
 
 async function sendAdmin(path: string, method = "GET", body?: unknown) {
   const response = await fetch(path, {
@@ -99,21 +100,30 @@ export function AdminDashboard({ principal, canManageUsers }: { principal: Admin
   return (
     <div className="admin-dashboard">
       <aside className="admin-sidebar">
-        <div className="admin-user-chip"><span className="admin-avatar">{principal.name.slice(0, 1).toUpperCase()}</span><span><strong>{principal.name}</strong><small>{principal.role.replace("_", " ")}</small></span></div>
+        <a className="admin-brand" href="/admin" aria-label="MCQPath admin home"><span className="admin-brand-mark">M</span><span><strong>MCQPath</strong><small>ADMIN WORKSPACE</small></span></a>
+        <div className="admin-sidebar-label">WORKSPACE</div>
         <nav aria-label="Admin sections">
-          {allowedTabs.map((item) => <button type="button" key={item} className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{tabLabels[item]}</button>)}
+          {allowedTabs.map((item) => <button type="button" key={item} className={tab === item ? "active" : ""} aria-current={tab === item ? "page" : undefined} onClick={() => setTab(item)}><span className="admin-nav-icon" aria-hidden="true">{tabIcons[item]}</span><span>{tabLabels[item]}</span>{item === "team" && <span className="admin-nav-count">{users.length}</span>}</button>)}
         </nav>
+        <div className="admin-sidebar-spacer" />
+        <div className="admin-user-chip"><span className="admin-avatar">{principal.name.slice(0, 1).toUpperCase()}</span><span><strong>{principal.name}</strong><small>{principal.role.replace("_", " ")}</small></span></div>
         <div className="admin-sidebar-foot"><AdminSignOutButton /></div>
       </aside>
       <div className="admin-workspace">
-        <div className="admin-workspace-heading"><div><span className="eyebrow">MCQPATH · ADMIN WORKSPACE</span><h2>{tabLabels[tab]}</h2><p>Manage study content and publishing workflow.</p></div><button className="button button-light" type="button" onClick={() => void refresh()} disabled={loading}>{loading ? "Refreshing…" : "Refresh data"}</button></div>
-        <ErrorMessage>{loadError}</ErrorMessage>
-        {loading && !subjects.length && !questions.length && !papers.length ? <div className="loading-panel">Loading admin records…</div> : null}
-        {tab === "overview" && <OverviewPanel subjects={subjects} topics={topics} questions={questions} papers={papers} users={users} canManageUsers={canManageUsers} onSelect={setTab} />}
-        {tab === "categories" && <CategoriesPanel subjects={subjects} topics={topics} canEdit={principal.role !== "reviewer"} canPublish={principal.role === "admin" || principal.role === "super_admin" || principal.role === "reviewer"} onSave={(body, method) => perform(() => sendAdmin("/api/admin/categories", method, body), "Category saved.")} onStatus={(kind, id, status) => perform(() => sendAdmin("/api/admin/categories", "PATCH", { kind, id, status }), `Category ${status}.`)} />}
-        {tab === "questions" && <QuestionsPanel subjects={subjects} topics={topics} questions={questions} canEdit={principal.role !== "reviewer"} canPublish={principal.role === "admin" || principal.role === "super_admin" || principal.role === "reviewer"} onSave={(body, method) => perform(() => sendAdmin("/api/admin/questions", method, body), "Question saved.")} onArchive={(id) => perform(() => sendAdmin("/api/admin/questions", "DELETE", { id }), "Question archived.")} onStatus={(id, status) => perform(() => sendAdmin("/api/admin/questions", "PATCH", { id, status }), `Question ${status}.`)} />}
-        {tab === "papers" && <PapersPanel papers={papers} subjects={subjects} topics={topics} canEdit={principal.role !== "reviewer"} canPublish={principal.role === "admin" || principal.role === "super_admin" || principal.role === "reviewer"} onSave={(body, method) => perform(() => sendAdmin("/api/admin/papers", method, body), "Past paper saved.")} onStatus={(id, status) => perform(() => sendAdmin("/api/admin/papers", "PATCH", { id, status }), `Past paper ${status}.`)} />}
-        {tab === "team" && canManageUsers && <TeamPanel users={users} currentId={principal.id} isSuperAdmin={principal.role === "super_admin"} onSave={(body, method) => perform(() => sendAdmin("/api/admin/users", method, body), "User account saved.")} />}
+        <header className="admin-workspace-heading">
+          <div className="admin-topbar-title"><span className="admin-breadcrumb">MCQPath <i>/</i> Admin</span><h1>{tabLabels[tab]}</h1></div>
+          <div className="admin-topbar-actions"><span className="admin-topbar-user"><span className="admin-avatar">{principal.name.slice(0, 1).toUpperCase()}</span><span><strong>{principal.name}</strong><small>{principal.role.replace("_", " ")}</small></span></span><button className="button button-light" type="button" onClick={() => void refresh()} disabled={loading}><span aria-hidden="true">↻</span> {loading ? "Refreshing…" : "Refresh"}</button></div>
+        </header>
+        <main className="admin-content-area">
+          <div className="admin-section-intro"><p>{tab === "overview" ? "A clear view of your question bank and publishing workflow." : tab === "questions" ? "Create, review, and publish sourced multiple-choice questions." : tab === "categories" ? "Organise subjects and topics used across MCQs and papers." : tab === "papers" ? "Build and publish past papers from your verified MCQs." : "Manage staff access and content permissions."}</p></div>
+          <ErrorMessage>{loadError}</ErrorMessage>
+          {loading && !subjects.length && !questions.length && !papers.length ? <div className="loading-panel">Loading admin records…</div> : null}
+          {tab === "overview" && <OverviewPanel subjects={subjects} topics={topics} questions={questions} papers={papers} users={users} canManageUsers={canManageUsers} onSelect={setTab} />}
+          {tab === "categories" && <CategoriesPanel subjects={subjects} topics={topics} canEdit={principal.role !== "reviewer"} canPublish={principal.role === "admin" || principal.role === "super_admin" || principal.role === "reviewer"} onSave={(body, method) => perform(() => sendAdmin("/api/admin/categories", method, body), "Category saved.")} onStatus={(kind, id, status) => perform(() => sendAdmin("/api/admin/categories", "PATCH", { kind, id, status }), `Category ${status}.`)} />}
+          {tab === "questions" && <QuestionsPanel subjects={subjects} topics={topics} questions={questions} canEdit={principal.role !== "reviewer"} canPublish={principal.role === "admin" || principal.role === "super_admin" || principal.role === "reviewer"} onSave={(body, method) => perform(() => sendAdmin("/api/admin/questions", method, body), "Question saved.")} onArchive={(id) => perform(() => sendAdmin("/api/admin/questions", "DELETE", { id }), "Question archived.")} onStatus={(id, status) => perform(() => sendAdmin("/api/admin/questions", "PATCH", { id, status }), `Question ${status}.`)} />}
+          {tab === "papers" && <PapersPanel papers={papers} subjects={subjects} topics={topics} canEdit={principal.role !== "reviewer"} canPublish={principal.role === "admin" || principal.role === "super_admin" || principal.role === "reviewer"} onSave={(body, method) => perform(() => sendAdmin("/api/admin/papers", method, body), "Past paper saved.")} onStatus={(id, status) => perform(() => sendAdmin("/api/admin/papers", "PATCH", { id, status }), `Past paper ${status}.`)} />}
+          {tab === "team" && canManageUsers && <TeamPanel users={users} currentId={principal.id} isSuperAdmin={principal.role === "super_admin"} onSave={(body, method) => perform(() => sendAdmin("/api/admin/users", method, body), "User account saved.")} />}
+        </main>
       </div>
     </div>
   );
