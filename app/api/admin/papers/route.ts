@@ -52,26 +52,26 @@ export async function GET() {
 async function savePaper(body: Record<string, unknown> | null, update: boolean) {
   const principal = await getAdminPrincipal();
   if (!principal) return NextResponse.json({ error: "Please sign in first." }, { status: 401 });
-  if (!hasPermission(principal, "papers:manage")) {
-    if (update && hasPermission(principal, "content:publish") && (body?.status === "published" || body?.status === "archived")) {
-      if (!hasDatabase || !db) return noDatabase();
-      const id = Number(body?.id);
-      if (!Number.isInteger(id) || id < 1) return NextResponse.json({ error: "Choose a valid past paper." }, { status: 400 });
-      if (body.status === "published") {
-        const [draftQuestions] = await db.execute<Array<RowDataPacket & { count: number }>>(
-          `SELECT COUNT(*) AS count FROM paper_questions pq JOIN questions q ON q.id = pq.question_id
-           WHERE pq.paper_id = ? AND q.status != 'published'`, [id],
-        );
-        if (Number(draftQuestions[0]?.count ?? 0) > 0) return NextResponse.json({ error: "Publish or remove every draft question before publishing this paper." }, { status: 400 });
-      }
-      const [exists] = await db.execute<Array<RowDataPacket & { id: number }>>("SELECT id FROM papers WHERE id = ? LIMIT 1", [id]);
-      if (!exists[0]) return NextResponse.json({ error: "Past paper not found." }, { status: 404 });
-      await db.execute("UPDATE papers SET status = ? WHERE id = ?", [body?.status, id]);
-      refreshPapers();
-      return NextResponse.json({ ok: true });
+  if (update && (body?.status === "published" || body?.status === "archived")) {
+    const permission = body.status === "published" ? "content:publish" : "content:delete";
+    if (!hasPermission(principal, permission)) return NextResponse.json({ error: body.status === "published" ? "Only Paper Managers and Super Admins can publish past papers." : "Only the Super Admin can archive past papers." }, { status: 403 });
+    if (!hasDatabase || !db) return noDatabase();
+    const id = Number(body.id);
+    if (!Number.isInteger(id) || id < 1) return NextResponse.json({ error: "Choose a valid past paper." }, { status: 400 });
+    if (body.status === "published") {
+      const [draftQuestions] = await db.execute<Array<RowDataPacket & { count: number }>>(
+        `SELECT COUNT(*) AS count FROM paper_questions pq JOIN questions q ON q.id = pq.question_id
+         WHERE pq.paper_id = ? AND q.status != 'published'`, [id],
+      );
+      if (Number(draftQuestions[0]?.count ?? 0) > 0) return NextResponse.json({ error: "Publish or remove every draft question before publishing this paper." }, { status: 400 });
     }
-    return NextResponse.json({ error: "Your role cannot manage past papers." }, { status: 403 });
+    const [exists] = await db.execute<Array<RowDataPacket & { id: number }>>("SELECT id FROM papers WHERE id = ? LIMIT 1", [id]);
+    if (!exists[0]) return NextResponse.json({ error: "Past paper not found." }, { status: 404 });
+    await db.execute("UPDATE papers SET status = ? WHERE id = ?", [body.status, id]);
+    refreshPapers();
+    return NextResponse.json({ ok: true });
   }
+  if (!hasPermission(principal, "papers:manage")) return NextResponse.json({ error: "Your role cannot manage past papers." }, { status: 403 });
   if (!hasDatabase || !db) return noDatabase();
   const paper = parsePaper(body);
   const id = Number(body?.id);
@@ -140,7 +140,7 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
   const principal = await getAdminPrincipal();
-  if (!principal || !hasPermission(principal, "content:publish")) return NextResponse.json({ error: "Only reviewers and admins can archive past papers." }, { status: 403 });
+  if (!principal || !hasPermission(principal, "content:delete")) return NextResponse.json({ error: "Only the Super Admin can archive past papers." }, { status: 403 });
   if (!hasDatabase || !db) return noDatabase();
   const body = await request.json().catch(() => null);
   const id = Number(body?.id);
