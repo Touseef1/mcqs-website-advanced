@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 export function AdminLoginForm() {
   const router = useRouter();
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -17,7 +18,7 @@ export function AdminLoginForm() {
       const response = await fetch("/api/admin/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ email, password }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Sign-in failed.");
@@ -31,7 +32,9 @@ export function AdminLoginForm() {
 
   return (
     <form className="admin-form login-form" onSubmit={signIn}>
-      <label htmlFor="admin-password">Admin password</label>
+      <label htmlFor="admin-email">Email address</label>
+      <input id="admin-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" required />
+      <label htmlFor="admin-password">Password</label>
       <input id="admin-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required />
       {error && <p className="form-error" role="alert">{error}</p>}
       <button className="button button-primary" type="submit" disabled={busy}>{busy ? "Signing in…" : "Sign in"} <span aria-hidden>→</span></button>

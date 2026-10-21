@@ -1,39 +1,35 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
+import { AdminDashboard } from "@/components/AdminDashboard";
 import { AdminLoginForm } from "@/components/AdminLoginForm";
-import { AdminQuestionForm } from "@/components/AdminQuestionForm";
-import { AdminSignOutButton } from "@/components/AdminSignOutButton";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
-import { adminLoginConfigured, isAdminAuthenticated } from "@/lib/admin-auth";
-import { getTopics } from "@/lib/data";
+import { adminLoginConfigured, getAdminPrincipal } from "@/lib/admin-auth";
 import { hasDatabase } from "@/lib/db";
 
 export const metadata: Metadata = {
-  title: "Content Admin",
+  title: "MCQPath Admin",
   robots: { index: false, follow: false },
 };
 
 async function AdminPanel() {
-  const authenticated = await isAdminAuthenticated();
-  const configured = adminLoginConfigured();
-  const topics = authenticated && hasDatabase ? await getTopics() : [];
+  const principal = await getAdminPrincipal();
   return (
-    <main className="content-page admin-page">
+    <main className="content-page admin-page admin-page-wide">
       <Breadcrumbs items={[{ label: "Admin" }]} />
-      <div className="page-intro"><span className="eyebrow">CONTENT MANAGEMENT</span><h1>MCQPath admin</h1><p>Publish reviewed questions and explanations to the public topic library.</p></div>
-      {!configured ? (
-        <div className="admin-notice"><strong>Admin setup is required</strong><p>Copy <code>.env.example</code> to <code>.env.local</code>, set a strong <code>ADMIN_PASSWORD</code> and a long random <code>SESSION_SECRET</code>, then restart the development server.</p></div>
-      ) : !authenticated ? (
-        <section className="admin-card"><span className="eyebrow">ADMIN SIGN IN</span><h2>Welcome back</h2><p>Sign in to manage practice content.</p><AdminLoginForm /></section>
+      <div className="page-intro"><span className="eyebrow">CONTENT MANAGEMENT</span><h1>MCQPath admin</h1><p>Organise subjects and topics, create MCQs and past papers, and manage publishing roles.</p></div>
+      {!adminLoginConfigured() ? (
+        <div className="admin-notice"><strong>Admin setup is required</strong><p>Copy <code>.env.example</code> to <code>.env.local</code>, set a private <code>ADMIN_PASSWORD</code>, a private <code>ADMIN_EMAIL</code>, and a long random <code>SESSION_SECRET</code>, then restart the server.</p></div>
+      ) : !principal ? (
+        <section className="admin-card admin-login-card"><span className="eyebrow">ADMIN SIGN IN</span><h2>Welcome to your workspace</h2><p>Sign in using your admin email and password.</p><AdminLoginForm /></section>
       ) : !hasDatabase ? (
-        <section className="admin-card"><div className="admin-card-heading"><div><span className="eyebrow">SIGNED IN</span><h2>Connect MySQL to publish</h2></div><AdminSignOutButton /></div><p>Set the database values from <code>.env.example</code> in <code>.env.local</code>, apply the SQL migration and seed, then restart the server.</p></section>
+        <section className="admin-card"><h2>Connect MySQL to manage content</h2><p>Set database values in <code>.env.local</code>, then apply <code>001_initial_schema.sql</code> and <code>002_role_based_admin.sql</code>.</p></section>
       ) : (
-        <section className="admin-card"><div className="admin-card-heading"><div><span className="eyebrow">SIGNED IN · MYSQL CONNECTED</span><h2>Add a practice question</h2><p>Choose a topic, add four options, and include a useful explanation.</p></div><AdminSignOutButton /></div><AdminQuestionForm topics={topics} /></section>
+        <AdminDashboard principal={principal} canManageUsers={principal.role === "admin" || principal.role === "super_admin"} />
       )}
     </main>
   );
 }
 
 export default function AdminPage() {
-  return <Suspense fallback={<main className="content-page admin-page"><div className="loading-panel">Loading content tools…</div></main>}><AdminPanel /></Suspense>;
+  return <Suspense fallback={<main className="content-page admin-page"><div className="loading-panel">Loading admin workspace…</div></main>}><AdminPanel /></Suspense>;
 }

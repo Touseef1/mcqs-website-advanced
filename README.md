@@ -7,7 +7,7 @@ MCQPath is a search-friendly MCQ and exam-practice website for learners in Pakis
 - Public subject, topic, quiz, search, and past-paper practice pages
 - Timed quizzes with server-side answer checking and explanations
 - MySQL schema and sample seed questions for English, General Knowledge, and Pakistan Studies
-- Password-protected admin area for publishing questions
+- Role-based admin workspace for subjects, topics, MCQs, past papers, and team accounts
 - Page metadata, canonical URLs, sitemap, robots rules, and responsive layouts
 - Demo content available before MySQL is configured
 
@@ -47,20 +47,21 @@ The included exam resources are clearly labelled practice sets. They are sample 
    FLUSH PRIVILEGES;
    ```
 
-4. Create the database tables and load sample content:
+4. Create the database tables, add the admin-role schema, and load sample content:
 
    ```bash
    sudo mysql < sql/migrations/001_initial_schema.sql
+   sudo mysql < sql/migrations/002_role_based_admin.sql
    sudo mysql < sql/seed.sql
    ```
 
-5. Set `DB_USER` and `DB_PASSWORD` in `.env.local` to match the user created above. Set a private admin password and generate a session secret:
+5. Set `DB_USER` and `DB_PASSWORD` in `.env.local` to match the user created above. Choose a private `ADMIN_EMAIL` and `ADMIN_PASSWORD` for the first super-admin account. Generate a session secret:
 
    ```bash
    openssl rand -hex 32
    ```
 
-   Put the generated value in `SESSION_SECRET`. Do not commit `.env.local`.
+   Put the generated value in `SESSION_SECRET`. Do not commit `.env.local` or share admin passwords in chat.
 
 6. Start the development server:
 
@@ -70,7 +71,20 @@ The included exam resources are clearly labelled practice sets. They are sample 
 
    Open [http://localhost:3000](http://localhost:3000). The admin area is at `/admin`.
 
-If database variables are missing, the public pages use the built-in sample content. The admin area requires both MySQL and its environment settings.
+If database variables are missing, the public pages use the built-in sample content. The admin area requires MySQL, both SQL migrations, and its environment settings.
+
+## Admin roles
+
+Sign in at `/admin` with the `ADMIN_EMAIL` and `ADMIN_PASSWORD` configured in `.env.local`. This environment-based account is the bootstrap super admin and is not stored in the application database. Use **Team & roles** in the dashboard to create additional accounts. Each team account needs a unique email and a password of at least 12 characters; the password is stored as a salted scrypt hash.
+
+| Role | Access |
+| --- | --- |
+| Super admin | Manage categories, MCQs, past papers, publishing, and team accounts; assign the Admin role |
+| Admin | Manage all content and team accounts; cannot assign the Admin role |
+| Editor | Create and edit subjects/topics, MCQs, and papers as drafts |
+| Reviewer | Review records and publish or archive content |
+
+Editors' changes are saved as drafts. A reviewer or admin must publish them before learners can see the content. Removing team access is done by setting the account to **Inactive**, which also ends its access on its next request.
 
 ## Useful commands
 
