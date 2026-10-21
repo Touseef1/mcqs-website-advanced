@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS papers (
     title VARCHAR(220) NOT NULL,
     slug VARCHAR(240) NOT NULL,
     year SMALLINT UNSIGNED NOT NULL,
-    paper_type ENUM('Practice set', 'Past paper') NOT NULL DEFAULT 'Practice set',
+    paper_type ENUM('Past paper') NOT NULL DEFAULT 'Past paper',
     description TEXT NOT NULL,
     status ENUM('draft', 'published') NOT NULL DEFAULT 'published',
     PRIMARY KEY (id),

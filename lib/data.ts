@@ -27,12 +27,13 @@ export function toPublicQuestion(question: Question): PublicQuestion {
     prompt: question.prompt,
     choices: question.choices,
     explanation: question.explanation,
+    sourceNote: question.sourceNote,
   };
 }
 
 type SubjectRow = RowDataPacket & { id: number; name: string; slug: string; description: string };
 type TopicRow = RowDataPacket & { id: number; slug: string; name: string; description: string; subject_slug: string; subject_name: string; question_count: number };
-type QuestionRow = RowDataPacket & { id: number; topic_slug: string; prompt: string; correct_choice: string; explanation: string | null };
+type QuestionRow = RowDataPacket & { id: number; topic_slug: string; prompt: string; correct_choice: string; explanation: string | null; source_note: string };
 type ChoiceRow = RowDataPacket & { question_id: number; label: string; choice_text: string };
 type PaperRow = RowDataPacket & { id: number; slug: string; title: string; exam: string; year: number; type: Paper["type"]; description: string };
 
@@ -147,7 +148,7 @@ export async function getQuestions(topicSlug: string): Promise<Question[]> {
   if (!hasDatabase || !db) return getDemoQuestionsForTopic(topicSlug);
   const [questionRows] = await db.execute<QuestionRow[]>(
     `SELECT q.id, t.slug AS topic_slug, q.question_text AS prompt,
-            q.correct_choice, q.explanation
+            q.correct_choice, q.explanation, q.source_note
      FROM questions q JOIN topics t ON t.id = q.topic_id
      WHERE t.slug = ? AND q.status = 'published' ORDER BY q.id`,
     [topicSlug],
@@ -166,6 +167,7 @@ export async function getQuestions(topicSlug: string): Promise<Question[]> {
     prompt: row.prompt,
     correctChoice: row.correct_choice,
     explanation: row.explanation ?? "",
+    sourceNote: row.source_note,
     choices: choiceRows.filter((choice) => choice.question_id === row.id)
       .map((choice) => ({ label: choice.label, text: choice.choice_text })),
   }));
@@ -258,7 +260,7 @@ export async function getQuestionsForPaper(slug: string): Promise<Question[]> {
   }
   const [rows] = await db.execute<QuestionRow[]>(
     `SELECT q.id, t.slug AS topic_slug, q.question_text AS prompt,
-            q.correct_choice, q.explanation
+            q.correct_choice, q.explanation, q.source_note
      FROM papers p
      JOIN paper_questions pq ON pq.paper_id = p.id
      JOIN questions q ON q.id = pq.question_id
@@ -281,6 +283,7 @@ export async function getQuestionsForPaper(slug: string): Promise<Question[]> {
     prompt: row.prompt,
     correctChoice: row.correct_choice,
     explanation: row.explanation ?? "",
+    sourceNote: row.source_note,
     choices: choiceRows.filter((choice) => choice.question_id === row.id)
       .map((choice) => ({ label: choice.label, text: choice.choice_text })),
   }));

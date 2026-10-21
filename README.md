@@ -6,12 +6,10 @@ MCQPath is a search-friendly MCQ and exam-practice website for learners in Pakis
 
 - Public subject, topic, quiz, search, and past-paper practice pages
 - Timed quizzes with server-side answer checking and explanations
-- MySQL schema and sample seed questions for English, General Knowledge, and Pakistan Studies
+- MySQL schema and seed subject/topic categories; no generated MCQs are included
 - Role-based admin workspace for subjects, topics, MCQs, past papers, and team accounts
 - Page metadata, canonical URLs, sitemap, robots rules, and responsive layouts
-- Demo content available before MySQL is configured
-
-The included exam resources are clearly labelled practice sets. They are sample content, not represented as official past papers.
+- Real MCQs and past papers must include source details before they can be published
 
 ## Requirements
 
@@ -47,12 +45,13 @@ The included exam resources are clearly labelled practice sets. They are sample 
    FLUSH PRIVILEGES;
    ```
 
-4. Create the database tables, add the admin-role schema, and load sample content:
+4. Create the database tables, add the admin and learner schemas, and configure verified past-paper content:
 
    ```bash
    sudo mysql < sql/migrations/001_initial_schema.sql
    sudo mysql < sql/migrations/002_role_based_admin.sql
    sudo mysql < sql/migrations/003_learner_accounts.sql
+   sudo mysql < sql/migrations/005_verified_papers_only.sql
    sudo mysql < sql/seed.sql
    ```
 
@@ -72,7 +71,9 @@ The included exam resources are clearly labelled practice sets. They are sample 
 
    Open [http://localhost:3000](http://localhost:3000). The admin area is at `/admin`.
 
-If database variables are missing, the public pages use the built-in sample content. The admin area requires MySQL, migrations `001` and `002`, and its environment settings. Learner registration, bookmarks, and quiz history additionally require migration `003` and `SESSION_SECRET`.
+Without MySQL, the site shows category placeholders only; it does not show generated MCQs or sample papers. The admin area requires MySQL, migrations `001`, `002`, and `005`, and its environment settings. Learner registration, bookmarks, and quiz history additionally require migration `003` and `SESSION_SECRET`.
+
+Every MCQ needs an exam/source reference in the admin form. MCQs without this reference cannot be published. The paper builder searches the full bank on the server, lets editors filter by subject, topic, and status, add all matching questions from a page, and arrange the selected question order.
 
 ## Admin roles
 
@@ -101,12 +102,12 @@ npm run start     # Run a production build locally
 ```text
 app/                  Next.js pages, APIs, sitemap and robots rules
 components/           Shared page elements and interactive quiz/admin UI
-lib/content.ts        Demo content used before connecting MySQL
+lib/content.ts        Empty MCQ fallback and category placeholders
 lib/data.ts           MySQL queries and content access functions
 lib/db.ts             MySQL connection pool
 lib/admin-auth.ts     Signed, HTTP-only admin session
 sql/migrations/       Versioned MySQL schema changes
-sql/seed.sql          Sample subjects, questions, and practice sets
+sql/seed.sql          Subject and topic categories only
 ```
 
 ## Before deployment
@@ -114,5 +115,5 @@ sql/seed.sql          Sample subjects, questions, and practice sets
 - Set `NEXT_PUBLIC_SITE_URL` to the real HTTPS website URL.
 - Configure a production MySQL database that the web host can reach; `localhost` refers to the web server after deployment, not your Ubuntu computer.
 - Set strong, private `ADMIN_PASSWORD` and `SESSION_SECRET` values in the hosting environment.
-- Replace demo questions with reviewed material and verify all official past-paper sources before labelling content as an official paper.
+- Add only reviewed MCQs with exam/source references and verify every past-paper source before publishing.
 - Test the site on mobile and connect the domain to Google Search Console.

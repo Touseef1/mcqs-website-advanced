@@ -11,7 +11,7 @@ export function SubjectCard({ subject }: { subject: Subject }) {
       <span className="subject-card-copy">
         <strong>{subject.name}</strong>
         <span>{subject.description}</span>
-        <span className="subject-count">{topicCount} topics <i /> {questionCount} practice questions</span>
+        <span className="subject-count">{topicCount} topics <i /> {questionCount} MCQs</span>
       </span>
       <span className="card-arrow" aria-hidden>↗</span>
     </Link>

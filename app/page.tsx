@@ -45,8 +45,8 @@ export default async function Home() {
           <div className="stats-inner">
             <div><strong>{subjects.length.toString().padStart(2, "0")}</strong><span>Study subjects</span></div>
             <div><strong>{topics.length.toString().padStart(2, "0")}</strong><span>Focused topics</span></div>
-            <div><strong>{totalQuestions.toString().padStart(2, "0")}</strong><span>Practice questions</span></div>
-            <div><strong>{papers.length.toString().padStart(2, "0")}</strong><span>Practice sets</span></div>
+            <div><strong>{totalQuestions.toString().padStart(2, "0")}</strong><span>MCQs</span></div>
+            <div><strong>{papers.length.toString().padStart(2, "0")}</strong><span>Past papers</span></div>
             <div className="stat-note"><span className="live-dot" /> A growing library, made for your next step</div>
           </div>
         </section>
@@ -70,7 +70,7 @@ export default async function Home() {
         </section>
 
         <section className="section paper-section">
-          <div className="section-heading"><div><span className="eyebrow">TEST YOUR PREPARATION</span><h2>Practice sets & papers</h2><p>Try a short exam-style set and review what you know.</p></div><Link className="text-link" href="/past-papers">View all papers <span aria-hidden>↗</span></Link></div>
+          <div className="section-heading"><div><span className="eyebrow">TEST YOUR PREPARATION</span><h2>Past papers</h2><p>Attempt source-verified exam papers and review each MCQ.</p></div><Link className="text-link" href="/past-papers">View all papers <span aria-hidden>↗</span></Link></div>
           <div className="paper-grid">{papers.map((paper) => <Link className="paper-card" href={`/past-papers/${paper.slug}`} key={paper.slug}><span className="paper-card-type">{paper.type} <span>· {paper.year}</span></span><strong>{paper.title}</strong><span className="paper-exam">{paper.exam}</span><span className="paper-card-footer">{paper.topicSlugs.length} topics <b>Open set <span aria-hidden>→</span></b></span></Link>)}</div>
         </section>
 

@@ -119,6 +119,7 @@ export function QuizRunner({ questions, title, quizSlug, quizPath }: { questions
               <article className="review-item" key={question.id}>
                 <div className="review-heading"><span>QUESTION {String(index + 1).padStart(2, "0")}</span><b className={answer?.correct ? "status-correct" : "status-wrong"}>{answer?.correct ? "Correct" : answer ? "Review" : "Not answered"}</b></div>
                 <h4>{question.prompt}</h4>
+                <p className="question-source">Source: {question.sourceNote}</p>
                 <button className="question-save-button" onClick={() => void toggleBookmark(question.id)} disabled={savingId === question.id}>{savedIds.includes(question.id) ? "★ Saved question" : "☆ Save question"}</button>
                 <p className="review-answer">{answer?.selectedChoice ? `Your answer: ${answer.selectedChoice} · ` : "Not answered · "}Correct answer: {answer?.correctChoice}</p>
                 <p>{answer?.explanation ?? "You skipped this question. Review the correct answer and explanation."}</p>
@@ -140,6 +141,7 @@ export function QuizRunner({ questions, title, quizSlug, quizPath }: { questions
             <article className="quiz-question" key={question.id}>
               <div className="question-number">QUESTION {String(index + 1).padStart(2, "0")} <span>{index + 1}/{questions.length}</span></div>
               <h2>{question.prompt}</h2>
+              <p className="question-source">Source: {question.sourceNote}</p>
               <button className="question-save-button" onClick={() => void toggleBookmark(question.id)} disabled={savingId === question.id}>{savingId === question.id ? "Saving…" : savedIds.includes(question.id) ? "★ Saved question" : "☆ Save question"}</button>
               <div className="choice-list">
                 {question.choices.map((choice) => (

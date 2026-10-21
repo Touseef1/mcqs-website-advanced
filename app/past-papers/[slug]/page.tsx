@@ -27,14 +27,14 @@ async function PaperContent({ params }: Props) {
   const publicQuestions = questions.map(toPublicQuestion);
   return (
     <main className="content-page">
-      <Breadcrumbs items={[{ label: "Past papers & practice sets", href: "/past-papers" }, { label: paper.title }]} />
+      <Breadcrumbs items={[{ label: "Past papers", href: "/past-papers" }, { label: paper.title }]} />
       <div className="paper-detail-heading">
         <span className={paper.type === "Past paper" ? "paper-badge official-badge" : "paper-badge"}>{paper.type} · {paper.year}</span>
         <h1>{paper.title}</h1><p>{paper.description}</p>
         <div className="paper-detail-meta"><span>{paper.exam}</span><span>{questions.length} questions</span><span>Online practice</span></div>
       </div>
       <div className="paper-detail-layout">
-        <div>{questions.length ? <QuizRunner questions={publicQuestions} title={paper.title} quizSlug={paper.slug} quizPath={`/past-papers/${paper.slug}`} /> : <div className="empty-state"><h2>This paper has no published questions yet</h2><p>Try one of the related topic quizzes while the paper is being prepared.</p></div>}</div>
+        <div>{questions.length ? <QuizRunner questions={publicQuestions} title={paper.title} quizSlug={paper.slug} quizPath={`/past-papers/${paper.slug}`} /> : <div className="empty-state"><h2>This paper has no published MCQs yet</h2><p>Related topics are listed here while its verified questions are being added.</p></div>}</div>
         <aside className="paper-topics"><span className="eyebrow">COVERED TOPICS</span><h2>Review these areas</h2>{related.map((topic) => <Link href={`/topics/${topic.slug}`} key={topic.slug}>{topic.name}<span aria-hidden>↗</span></Link>)}</aside>
       </div>
     </main>
@@ -42,5 +42,5 @@ async function PaperContent({ params }: Props) {
 }
 
 export default function PaperPage({ params }: Props) {
-  return <Suspense fallback={<main className="content-page"><div className="loading-panel">Loading practice set…</div></main>}><PaperContent params={params} /></Suspense>;
+  return <Suspense fallback={<main className="content-page"><div className="loading-panel">Loading past paper…</div></main>}><PaperContent params={params} /></Suspense>;
 }

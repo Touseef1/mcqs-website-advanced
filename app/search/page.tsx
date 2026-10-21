@@ -7,7 +7,7 @@ import { searchContent } from "@/lib/data";
 
 export const metadata: Metadata = {
   title: "Search MCQs, Subjects, and Papers",
-  description: "Search subject topics, practice questions, and exam preparation resources.",
+  description: "Search subjects, topics, source-referenced MCQs, and verified past-paper resources.",
   robots: { index: false, follow: true },
 };
 

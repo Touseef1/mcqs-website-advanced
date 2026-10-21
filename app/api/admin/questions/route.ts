@@ -25,20 +25,21 @@ function parseQuestion(body: Record<string, unknown> | null) {
   const topicId = Number(body?.topicId);
   const prompt = typeof body?.prompt === "string" ? body.prompt.trim() : "";
   const explanation = typeof body?.explanation === "string" ? body.explanation.trim() : "";
+  const sourceNote = typeof body?.sourceNote === "string" ? body.sourceNote.trim() : "";
   const choices = Array.isArray(body?.choices) ? body.choices.map((choice) => typeof choice === "string" ? choice.trim() : "") : [];
   const correctChoice = typeof body?.correctChoice === "string" ? body.correctChoice : "";
   const difficulty = body?.difficulty === "easy" || body?.difficulty === "hard" ? body.difficulty : "medium";
-  if (!Number.isInteger(topicId) || topicId < 1 || prompt.length < 8 || prompt.length > 1500 || explanation.length < 3 || explanation.length > 3000 || choices.length !== 4 || choices.some((choice) => choice.length < 1 || choice.length > 800) || !labels.includes(correctChoice as typeof labels[number])) return null;
-  return { topicId, prompt, explanation, choices, correctChoice, difficulty };
+  if (!Number.isInteger(topicId) || topicId < 1 || prompt.length < 8 || prompt.length > 1500 || explanation.length < 3 || explanation.length > 3000 || sourceNote.length < 4 || sourceNote.length > 500 || choices.length !== 4 || choices.some((choice) => choice.length < 1 || choice.length > 800) || !labels.includes(correctChoice as typeof labels[number])) return null;
+  return { topicId, prompt, explanation, sourceNote, choices, correctChoice, difficulty };
 }
 
 export async function GET() {
   const principal = await getAdminPrincipal();
   if (!principal || !hasPermission(principal, "content:view")) return NextResponse.json({ error: "Sign in with a content role." }, { status: 401 });
   if (!hasDatabase || !db) return noDatabase();
-  const [questions] = await db.execute<Array<RowDataPacket & { id: number; topic_id: number; topic_name: string; subject_name: string; prompt: string; explanation: string; correct_choice: string; difficulty: string; status: string; updated_at: string }>>(
+  const [questions] = await db.execute<Array<RowDataPacket & { id: number; topic_id: number; topic_name: string; subject_name: string; prompt: string; explanation: string; source_note: string; correct_choice: string; difficulty: string; status: string; updated_at: string }>>(
     `SELECT q.id, q.topic_id, t.name AS topic_name, s.name AS subject_name,
-            q.question_text AS prompt, q.explanation, q.correct_choice, q.difficulty, q.status, q.updated_at
+            q.question_text AS prompt, q.explanation, q.source_note, q.correct_choice, q.difficulty, q.status, q.updated_at
      FROM questions q JOIN topics t ON t.id = q.topic_id JOIN subjects s ON s.id = t.subject_id
      ORDER BY q.updated_at DESC, q.id DESC LIMIT 500`,
   );
@@ -57,7 +58,7 @@ export async function GET() {
   }
   return NextResponse.json({ questions: questions.map((question) => ({
     id: question.id, topicId: question.topic_id, topicName: question.topic_name, subjectName: question.subject_name,
-    prompt: question.prompt, explanation: question.explanation, correctChoice: question.correct_choice,
+    prompt: question.prompt, explanation: question.explanation, sourceNote: question.source_note, correctChoice: question.correct_choice,
     difficulty: question.difficulty, status: question.status,
     choices: choiceMap.get(question.id) ?? [],
   })) }, { headers: { "Cache-Control": "no-store" } });
@@ -69,17 +70,17 @@ export async function POST(request: Request) {
   if (!hasDatabase || !db) return noDatabase();
   const body = await request.json().catch(() => null);
   const parsed = parseQuestion(body);
-  if (!parsed) return NextResponse.json({ error: "Check the topic, question, four answer choices, correct answer, and explanation." }, { status: 400 });
+  if (!parsed) return NextResponse.json({ error: "Add a source reference and check the topic, question, four choices, correct answer, and explanation." }, { status: 400 });
   const status = requestedStatus(body?.status, principal);
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
     const [insert] = await connection.execute(
-      `INSERT INTO questions (topic_id, question_text, explanation, correct_choice, difficulty, status)
-       SELECT t.id, ?, ?, ?, ?, ? FROM topics t JOIN subjects s ON s.id = t.subject_id
+      `INSERT INTO questions (topic_id, question_text, explanation, source_note, correct_choice, difficulty, status)
+       SELECT t.id, ?, ?, ?, ?, ?, ? FROM topics t JOIN subjects s ON s.id = t.subject_id
        WHERE t.id = ? AND t.status != 'archived' AND s.status != 'archived'
          AND (? != 'published' OR (t.status = 'published' AND s.status = 'published'))`,
-      [parsed.prompt, parsed.explanation, parsed.correctChoice, parsed.difficulty, status, parsed.topicId, status],
+      [parsed.prompt, parsed.explanation, parsed.sourceNote, parsed.correctChoice, parsed.difficulty, status, parsed.topicId, status],
     );
     const questionId = (insert as { insertId: number }).insertId;
     if (!questionId) {
@@ -112,12 +113,13 @@ export async function PATCH(request: Request) {
   if (body?.status === "published" || body?.status === "archived") {
     if (!hasPermission(principal, "content:publish")) return NextResponse.json({ error: "Only reviewers and admins can publish or archive questions." }, { status: 403 });
     const status = body.status;
-    const [current] = await db.execute<Array<RowDataPacket & { id: number; topic_status: string; subject_status: string }>>(
-      `SELECT q.id, t.status AS topic_status, s.status AS subject_status
+    const [current] = await db.execute<Array<RowDataPacket & { id: number; topic_status: string; subject_status: string; source_note: string }>>(
+      `SELECT q.id, t.status AS topic_status, s.status AS subject_status, q.source_note
        FROM questions q JOIN topics t ON t.id = q.topic_id JOIN subjects s ON s.id = t.subject_id
        WHERE q.id = ? LIMIT 1`, [id],
     );
     if (!current[0]) return NextResponse.json({ error: "Question not found." }, { status: 404 });
+    if (status === "published" && !current[0].source_note.trim()) return NextResponse.json({ error: "Add the exam and source reference before publishing this MCQ." }, { status: 400 });
     if (status === "published" && (current[0].topic_status !== "published" || current[0].subject_status !== "published")) {
       return NextResponse.json({ error: "Publish its subject and topic before publishing this question." }, { status: 400 });
     }
@@ -132,7 +134,7 @@ export async function PATCH(request: Request) {
 
   if (!hasPermission(principal, "questions:manage")) return NextResponse.json({ error: "Your role cannot edit questions." }, { status: 403 });
   const parsed = parseQuestion(body);
-  if (!parsed) return NextResponse.json({ error: "Check the topic, question, four answer choices, correct answer, and explanation." }, { status: 400 });
+  if (!parsed) return NextResponse.json({ error: "Add a source reference and check the topic, question, four choices, correct answer, and explanation." }, { status: 400 });
   const status = requestedStatus(body?.status, principal);
   const connection = await db.getConnection();
   try {
@@ -153,8 +155,8 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Choose a valid topic. Published questions need a published topic." }, { status: 400 });
     }
     await connection.execute(
-      "UPDATE questions SET topic_id = ?, question_text = ?, explanation = ?, correct_choice = ?, difficulty = ?, status = ? WHERE id = ?",
-      [parsed.topicId, parsed.prompt, parsed.explanation, parsed.correctChoice, parsed.difficulty, status, id],
+      "UPDATE questions SET topic_id = ?, question_text = ?, explanation = ?, source_note = ?, correct_choice = ?, difficulty = ?, status = ? WHERE id = ?",
+      [parsed.topicId, parsed.prompt, parsed.explanation, parsed.sourceNote, parsed.correctChoice, parsed.difficulty, status, id],
     );
     await connection.execute("DELETE FROM choices WHERE question_id = ?", [id]);
     for (let index = 0; index < labels.length; index++) {

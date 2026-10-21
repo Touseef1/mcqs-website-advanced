@@ -13,7 +13,7 @@ export default async function SubjectsPage() {
   return (
     <main className="content-page">
       <Breadcrumbs items={[{ label: "Subjects" }]} />
-      <div className="page-intro"><span className="eyebrow">BROWSE & PRACTISE</span><h1>Choose your subject</h1><p>Build a strong foundation with focused topics, practice questions, and explanations.</p></div>
+      <div className="page-intro"><span className="eyebrow">BROWSE REAL EXAM MCQS</span><h1>Choose your subject</h1><p>Find source-referenced exam questions by subject and topic, then review the explanations.</p></div>
       <div className="subject-grid subject-grid-page">{subjects.map((subject) => <SubjectCard subject={subject} key={subject.slug} />)}</div>
     </main>
   );

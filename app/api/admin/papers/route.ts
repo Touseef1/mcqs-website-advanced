@@ -20,7 +20,7 @@ function parsePaper(body: Record<string, unknown> | null) {
   const title = typeof body?.title === "string" ? body.title.trim() : "";
   const description = typeof body?.description === "string" ? body.description.trim() : "";
   const year = Number(body?.year);
-  const type = body?.type === "Past paper" ? "Past paper" : body?.type === "Practice set" ? "Practice set" : null;
+  const type = body?.type === "Past paper" ? "Past paper" : null;
   const slug = typeof body?.slug === "string" && body.slug.trim() ? slugify(body.slug) : slugify(title);
   const questionIds = Array.isArray(body?.questionIds) ? [...new Set(body.questionIds.map(Number))] : [];
   if (examName.length < 2 || examName.length > 160 || title.length < 3 || title.length > 220 || description.length < 3 || description.length > 3000 || !Number.isInteger(year) || year < 1900 || year > 2200 || !type || !validSlug(slug) || questionIds.length < 1 || questionIds.length > 300 || questionIds.some((id) => !Number.isInteger(id) || id < 1)) return null;
