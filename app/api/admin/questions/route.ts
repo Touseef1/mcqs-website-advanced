@@ -29,8 +29,38 @@ function parseQuestion(body: Record<string, unknown> | null) {
   const choices = Array.isArray(body?.choices) ? body.choices.map((choice) => typeof choice === "string" ? choice.trim() : "") : [];
   const correctChoice = typeof body?.correctChoice === "string" ? body.correctChoice : "";
   const difficulty = body?.difficulty === "easy" || body?.difficulty === "hard" ? body.difficulty : "medium";
-  if (!Number.isInteger(topicId) || topicId < 1 || prompt.length < 8 || prompt.length > 1500 || explanation.length < 3 || explanation.length > 3000 || sourceNote.length < 4 || sourceNote.length > 500 || choices.length !== 4 || choices.some((choice) => choice.length < 1 || choice.length > 800) || !labels.includes(correctChoice as typeof labels[number])) return null;
-  return { topicId, prompt, explanation, sourceNote, choices, correctChoice, difficulty };
+  const paperIds = body && Object.hasOwn(body, "paperIds")
+    ? Array.isArray(body.paperIds) ? [...new Set(body.paperIds.map(Number))] : null
+    : undefined;
+  if (!Number.isInteger(topicId) || topicId < 1 || prompt.length < 8 || prompt.length > 1500 || explanation.length < 3 || explanation.length > 3000 || sourceNote.length < 4 || sourceNote.length > 500 || choices.length !== 4 || choices.some((choice) => choice.length < 1 || choice.length > 800) || !labels.includes(correctChoice as typeof labels[number]) || paperIds === null || (paperIds && (paperIds.length > 50 || paperIds.some((id) => !Number.isSafeInteger(id) || id < 1)))) return null;
+  return { topicId, prompt, explanation, sourceNote, choices, correctChoice, difficulty, paperIds };
+}
+
+async function validatePaperIds(connection: import("mysql2/promise").PoolConnection, paperIds: number[]) {
+  if (!paperIds.length) return true;
+  const [rows] = await connection.execute<Array<RowDataPacket & { id: number; status: string }>>(
+    `SELECT id, status FROM papers WHERE id IN (${paperIds.map(() => "?").join(",")})`, paperIds,
+  );
+  return rows.length === paperIds.length && rows.every((paper) => paper.status !== "archived");
+}
+
+async function syncQuestionPapers(connection: import("mysql2/promise").PoolConnection, questionId: number, paperIds: number[]) {
+  const [existing] = await connection.execute<Array<RowDataPacket & { paper_id: number; question_order: number }>>(
+    "SELECT paper_id, question_order FROM paper_questions WHERE question_id = ?", [questionId],
+  );
+  const oldOrder = new Map(existing.map((row) => [row.paper_id, row.question_order]));
+  const wanted = new Set(paperIds);
+  for (const row of existing) {
+    if (!wanted.has(row.paper_id)) await connection.execute("DELETE FROM paper_questions WHERE paper_id = ? AND question_id = ?", [row.paper_id, questionId]);
+  }
+  for (const paperId of paperIds) {
+    if (oldOrder.has(paperId)) continue;
+    const [maxRows] = await connection.execute<Array<RowDataPacket & { max_order: number | null }>>(
+      "SELECT MAX(question_order) AS max_order FROM paper_questions WHERE paper_id = ?", [paperId],
+    );
+    const order = Number(maxRows[0]?.max_order ?? 0) + 1;
+    await connection.execute("INSERT INTO paper_questions (paper_id, question_id, question_order) VALUES (?, ?, ?)", [paperId, questionId, order]);
+  }
 }
 
 export async function GET() {
@@ -44,6 +74,14 @@ export async function GET() {
      ORDER BY q.updated_at DESC, q.id DESC LIMIT 500`,
   );
   const questionIds = questions.map((question) => question.id);
+  const [paperLinks] = questionIds.length
+    ? await db.execute<Array<RowDataPacket & { question_id: number; paper_id: number }>>(
+      `SELECT pq.question_id, pq.paper_id FROM paper_questions pq JOIN papers p ON p.id = pq.paper_id
+       WHERE pq.question_id IN (${questionIds.map(() => "?").join(",")}) AND p.status != 'archived'`, questionIds,
+    )
+    : [[] as Array<RowDataPacket & { question_id: number; paper_id: number }>];
+  const paperIdMap = new Map<number, number[]>();
+  for (const link of paperLinks) paperIdMap.set(link.question_id, [...(paperIdMap.get(link.question_id) ?? []), link.paper_id]);
   const [choices] = questionIds.length
     ? await db.execute<Array<RowDataPacket & { question_id: number; label: string; choice_text: string }>>(
       `SELECT question_id, label, choice_text FROM choices
@@ -59,7 +97,7 @@ export async function GET() {
   return NextResponse.json({ questions: questions.map((question) => ({
     id: question.id, topicId: question.topic_id, topicName: question.topic_name, subjectName: question.subject_name,
     prompt: question.prompt, explanation: question.explanation, sourceNote: question.source_note, correctChoice: question.correct_choice,
-    difficulty: question.difficulty, status: question.status,
+    difficulty: question.difficulty, status: question.status, paperIds: paperIdMap.get(question.id) ?? [],
     choices: choiceMap.get(question.id) ?? [],
   })) }, { headers: { "Cache-Control": "no-store" } });
 }
@@ -71,10 +109,16 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   const parsed = parseQuestion(body);
   if (!parsed) return NextResponse.json({ error: "Add a source reference and check the topic, question, four choices, correct answer, and explanation." }, { status: 400 });
+  if (parsed.paperIds !== undefined && !hasPermission(principal, "papers:manage")) return NextResponse.json({ error: "Your role cannot assign questions to past papers." }, { status: 403 });
   const status = requestedStatus(body?.status, principal);
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
+    const paperIds = parsed.paperIds ?? [];
+    if (!await validatePaperIds(connection, paperIds)) {
+      await connection.rollback();
+      return NextResponse.json({ error: "Choose active past papers. Archived papers cannot receive MCQs." }, { status: 400 });
+    }
     const [insert] = await connection.execute(
       `INSERT INTO questions (topic_id, question_text, explanation, source_note, correct_choice, difficulty, status)
        SELECT t.id, ?, ?, ?, ?, ?, ? FROM topics t JOIN subjects s ON s.id = t.subject_id
@@ -90,6 +134,7 @@ export async function POST(request: Request) {
     for (let index = 0; index < labels.length; index++) {
       await connection.execute("INSERT INTO choices (question_id, label, choice_text) VALUES (?, ?, ?)", [questionId, labels[index], parsed.choices[index]]);
     }
+    await syncQuestionPapers(connection, questionId, paperIds);
     await connection.commit();
   } catch (error) {
     await connection.rollback();
@@ -136,6 +181,7 @@ export async function PATCH(request: Request) {
   if (!hasPermission(principal, "questions:manage")) return NextResponse.json({ error: "Your role cannot edit questions." }, { status: 403 });
   const parsed = parseQuestion(body);
   if (!parsed) return NextResponse.json({ error: "Add a source reference and check the topic, question, four choices, correct answer, and explanation." }, { status: 400 });
+  if (parsed.paperIds !== undefined && !hasPermission(principal, "papers:manage")) return NextResponse.json({ error: "Your role cannot assign questions to past papers." }, { status: 403 });
   const status = requestedStatus(body?.status, principal);
   const connection = await db.getConnection();
   try {
@@ -159,6 +205,10 @@ export async function PATCH(request: Request) {
       await connection.rollback();
       return NextResponse.json({ error: "Choose a valid topic. Published questions need a published topic." }, { status: 400 });
     }
+    if (parsed.paperIds !== undefined && !await validatePaperIds(connection, parsed.paperIds)) {
+      await connection.rollback();
+      return NextResponse.json({ error: "Choose active past papers. Archived papers cannot receive MCQs." }, { status: 400 });
+    }
     await connection.execute(
       "UPDATE questions SET topic_id = ?, question_text = ?, explanation = ?, source_note = ?, correct_choice = ?, difficulty = ?, status = ? WHERE id = ?",
       [parsed.topicId, parsed.prompt, parsed.explanation, parsed.sourceNote, parsed.correctChoice, parsed.difficulty, status, id],
@@ -167,6 +217,7 @@ export async function PATCH(request: Request) {
     for (let index = 0; index < labels.length; index++) {
       await connection.execute("INSERT INTO choices (question_id, label, choice_text) VALUES (?, ?, ?)", [id, labels[index], parsed.choices[index]]);
     }
+    if (parsed.paperIds !== undefined) await syncQuestionPapers(connection, id, parsed.paperIds);
     await connection.commit();
   } catch (error) {
     await connection.rollback();
