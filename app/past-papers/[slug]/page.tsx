@@ -34,7 +34,7 @@ async function PaperContent({ params }: Props) {
         <div className="paper-detail-meta"><span>{paper.exam}</span><span>{questions.length} questions</span><span>Online practice</span></div>
       </div>
       <div className="paper-detail-layout">
-        <div>{questions.length ? <QuizRunner questions={publicQuestions} title={paper.title} /> : <div className="empty-state"><h2>This paper has no published questions yet</h2><p>Try one of the related topic quizzes while the paper is being prepared.</p></div>}</div>
+        <div>{questions.length ? <QuizRunner questions={publicQuestions} title={paper.title} quizSlug={paper.slug} quizPath={`/past-papers/${paper.slug}`} /> : <div className="empty-state"><h2>This paper has no published questions yet</h2><p>Try one of the related topic quizzes while the paper is being prepared.</p></div>}</div>
         <aside className="paper-topics"><span className="eyebrow">COVERED TOPICS</span><h2>Review these areas</h2>{related.map((topic) => <Link href={`/topics/${topic.slug}`} key={topic.slug}>{topic.name}<span aria-hidden>↗</span></Link>)}</aside>
       </div>
     </main>

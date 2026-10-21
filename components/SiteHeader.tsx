@@ -12,6 +12,7 @@ export function SiteHeader() {
           <Link href="/subjects">Subjects</Link>
           <Link href="/past-papers">Past papers</Link>
           <Link href="/#practice">Practice tests</Link>
+          <Link href="/account">My account</Link>
         </nav>
         <Link className="header-cta" href="/subjects">Start practising <span aria-hidden>↗</span></Link>
       </div>

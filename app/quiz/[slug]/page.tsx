@@ -25,7 +25,7 @@ async function QuizContent({ params }: Props) {
     <main className="content-page quiz-page">
       <Breadcrumbs items={[{ label: "Subjects", href: "/subjects" }, { label: topic.subjectName, href: `/subjects/${topic.subjectSlug}` }, { label: topic.name, href: `/topics/${topic.slug}` }, { label: "Practice quiz" }]} />
       <div className="quiz-page-heading"><span className="eyebrow">FOCUSED PRACTICE</span><h1>{topic.name} quiz</h1><p>{topic.description}</p></div>
-      <QuizRunner questions={questions} title={topic.name} />
+      <QuizRunner questions={questions} title={topic.name} quizSlug={topic.slug} />
     </main>
   );
 }

@@ -52,6 +52,7 @@ The included exam resources are clearly labelled practice sets. They are sample 
    ```bash
    sudo mysql < sql/migrations/001_initial_schema.sql
    sudo mysql < sql/migrations/002_role_based_admin.sql
+   sudo mysql < sql/migrations/003_learner_accounts.sql
    sudo mysql < sql/seed.sql
    ```
 
@@ -71,7 +72,7 @@ The included exam resources are clearly labelled practice sets. They are sample 
 
    Open [http://localhost:3000](http://localhost:3000). The admin area is at `/admin`.
 
-If database variables are missing, the public pages use the built-in sample content. The admin area requires MySQL, both SQL migrations, and its environment settings.
+If database variables are missing, the public pages use the built-in sample content. The admin area requires MySQL, migrations `001` and `002`, and its environment settings. Learner registration, bookmarks, and quiz history additionally require migration `003` and `SESSION_SECRET`.
 
 ## Admin roles
 
