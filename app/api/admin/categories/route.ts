@@ -83,8 +83,17 @@ export async function PATCH(request: Request) {
   if (!kind || !Number.isInteger(id) || id < 1) return NextResponse.json({ error: "Choose a valid category to update." }, { status: 400 });
 
   const canManage = hasPermission(principal, "categories:manage");
-  const canReview = hasPermission(principal, "content:publish") && (body?.status === "published" || body?.status === "archived");
-  if (!canManage && !canReview) return NextResponse.json({ error: "Your role cannot manage categories." }, { status: 403 });
+  const canPublish = hasPermission(principal, "content:publish");
+  const canDelete = hasPermission(principal, "content:delete");
+  if (body?.status === "archived" && !canDelete) return NextResponse.json({ error: "Only the Super Admin can archive categories." }, { status: 403 });
+  if (body?.status === "published" && !canPublish) return NextResponse.json({ error: "Only Paper Managers and Super Admins can publish categories." }, { status: 403 });
+  if (!canManage && !(canPublish && body?.status === "published")) return NextResponse.json({ error: "Your role cannot manage categories." }, { status: 403 });
+  if (body?.status === "draft" && !canPublish) {
+    const table = kind === "subject" ? "subjects" : "topics";
+    const [current] = await db.execute<Array<RowDataPacket & { status: string }>>(`SELECT status FROM ${table} WHERE id = ? LIMIT 1`, [id]);
+    if (!current[0]) return NextResponse.json({ error: "Category not found." }, { status: 404 });
+    if (current[0].status === "published") return NextResponse.json({ error: "Your role can edit draft categories only." }, { status: 403 });
+  }
 
   try {
     if (body?.status === "archived") {
