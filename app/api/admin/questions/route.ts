@@ -111,7 +111,8 @@ export async function PATCH(request: Request) {
   if (!Number.isInteger(id) || id < 1) return NextResponse.json({ error: "Choose a valid question." }, { status: 400 });
 
   if (body?.status === "published" || body?.status === "archived") {
-    if (!hasPermission(principal, "content:publish")) return NextResponse.json({ error: "Only reviewers and admins can publish or archive questions." }, { status: 403 });
+    const permission = body.status === "published" ? "content:publish" : "content:delete";
+    if (!hasPermission(principal, permission)) return NextResponse.json({ error: body.status === "published" ? "Only Paper Managers and Super Admins can publish questions." : "Only the Super Admin can archive questions." }, { status: 403 });
     const status = body.status;
     const [current] = await db.execute<Array<RowDataPacket & { id: number; topic_status: string; subject_status: string; source_note: string }>>(
       `SELECT q.id, t.status AS topic_status, s.status AS subject_status, q.source_note
@@ -139,10 +140,14 @@ export async function PATCH(request: Request) {
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
-    const [existing] = await connection.execute<Array<RowDataPacket & { id: number }>>("SELECT id FROM questions WHERE id = ? LIMIT 1", [id]);
+    const [existing] = await connection.execute<Array<RowDataPacket & { id: number; status: string }>>("SELECT id, status FROM questions WHERE id = ? LIMIT 1", [id]);
     if (!existing[0]) {
       await connection.rollback();
       return NextResponse.json({ error: "Question not found." }, { status: 404 });
+    }
+    if (existing[0].status === "published" && !hasPermission(principal, "content:publish")) {
+      await connection.rollback();
+      return NextResponse.json({ error: "Your role can edit draft questions only." }, { status: 403 });
     }
     const [topic] = await connection.execute<Array<RowDataPacket & { id: number }>>(
       `SELECT t.id FROM topics t JOIN subjects s ON s.id = t.subject_id
@@ -176,7 +181,7 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
   const principal = await getAdminPrincipal();
-  if (!principal || !hasPermission(principal, "content:publish")) return NextResponse.json({ error: "Only reviewers and admins can archive questions." }, { status: 403 });
+  if (!principal || !hasPermission(principal, "content:delete")) return NextResponse.json({ error: "Only the Super Admin can archive questions." }, { status: 403 });
   if (!hasDatabase || !db) return noDatabase();
   const body = await request.json().catch(() => null);
   const id = Number(body?.id);
