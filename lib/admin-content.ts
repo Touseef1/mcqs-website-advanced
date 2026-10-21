@@ -10,10 +10,7 @@ export function slugify(value: string) {
 }
 
 export function requestedStatus(value: unknown, principal: AdminPrincipal): ContentStatus {
-  if (principal.role === "admin" || principal.role === "super_admin") {
-    return value === "published" || value === "archived" ? value : "draft";
-  }
-  if (principal.role === "reviewer" && value === "published") return "published";
+  if ((principal.role === "admin" || principal.role === "super_admin") && value === "published") return "published";
   return "draft";
 }
 
