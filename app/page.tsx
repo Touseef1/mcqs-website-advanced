@@ -1,69 +1,81 @@
-import Image from "next/image";
+import Link from "next/link";
+import { SearchBar } from "@/components/SearchBar";
+import { SubjectCard } from "@/components/SubjectCard";
+import { getPapers, getSubjects, getTopics } from "@/lib/data";
 
-export default function Home() {
+export default async function Home() {
+  const [subjects, topics, papers] = await Promise.all([getSubjects(), getTopics(), getPapers()]);
+  const totalQuestions = topics.reduce((sum, topic) => sum + topic.questionCount, 0);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <>
+      <section className="hero">
+        <div className="hero-grid" aria-hidden />
+        <div className="hero-inner">
+          <div className="hero-copy">
+            <span className="eyebrow hero-eyebrow"><span className="eyebrow-dot" /> PREPARE WITH PURPOSE</span>
+            <h1>Small practice.<br /><em>Big progress.</em></h1>
+            <p className="hero-description">Free MCQs, clear explanations, and exam-style practice to help you feel ready for your next test.</p>
+            <SearchBar />
+            <div className="hero-proof">
+              <span className="proof-stack"><i>✓</i><i>✓</i><i>✓</i></span>
+              <span>Build your knowledge, one question at a time</span>
+            </div>
+          </div>
+          <div className="hero-art" aria-label="Daily learning progress illustration">
+            <div className="orbit orbit-one" /><div className="orbit orbit-two" />
+            <div className="floating-chip chip-top"><span>✦</span> Your next step</div>
+            <div className="study-card">
+              <div className="study-card-top"><span className="study-label">TODAY’S PRACTICE</span><span className="study-dots">···</span></div>
+              <div className="study-icon">✳</div>
+              <h2>One question<br />at a time.</h2>
+              <div className="study-progress-label"><span>Your learning streak</span><strong>04 days</strong></div>
+              <div className="study-progress"><i /></div>
+              <div className="study-card-bottom"><span>Keep your momentum going</span><span className="mini-arrow">↗</span></div>
+            </div>
+            <div className="floating-chip chip-bottom"><span className="spark">✦</span> Progress feels good</div>
+            <span className="hero-spark spark-left">✳</span><span className="hero-spark spark-right">✦</span>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+        <div className="hero-bottom"><span>MADE FOR LEARNERS ACROSS PAKISTAN</span><span className="hero-bottom-line" /><span>LEARN · PRACTISE · IMPROVE</span></div>
+      </section>
+
+      <main>
+        <section className="stats-strip" aria-label="Website overview">
+          <div className="stats-inner">
+            <div><strong>{subjects.length.toString().padStart(2, "0")}</strong><span>Study subjects</span></div>
+            <div><strong>{topics.length.toString().padStart(2, "0")}</strong><span>Focused topics</span></div>
+            <div><strong>{totalQuestions.toString().padStart(2, "0")}</strong><span>Practice questions</span></div>
+            <div><strong>{papers.length.toString().padStart(2, "0")}</strong><span>Practice sets</span></div>
+            <div className="stat-note"><span className="live-dot" /> A growing library, made for your next step</div>
+          </div>
+        </section>
+
+        <section className="section section-subjects" id="subjects">
+          <div className="section-heading">
+            <div><span className="eyebrow">FIND YOUR FOCUS</span><h2>Start with a subject</h2><p>Choose a subject and find a topic to practise at your own pace.</p></div>
+            <Link className="text-link" href="/subjects">Explore all subjects <span aria-hidden>↗</span></Link>
+          </div>
+          <div className="subject-grid">{subjects.map((subject) => <SubjectCard subject={subject} key={subject.slug} />)}</div>
+        </section>
+
+        <section className="practice-band" id="practice">
+          <div className="practice-band-copy"><span className="eyebrow light-eyebrow">A BETTER WAY TO PREPARE</span><h2>Understand the answer.<br /><em>Remember it longer.</em></h2><p>Practise a topic, check your result, and learn from every explanation. Your next test starts with one small step.</p><Link className="button button-light" href="/subjects">Find a topic <span aria-hidden>→</span></Link></div>
+          <div className="practice-visual" aria-hidden><div className="practice-circle circle-back" /><div className="practice-circle circle-front"><div className="check-mark">✓</div><span>ANSWER<br />UNDERSTOOD</span></div><div className="practice-tag tag-one">01 <span>Learn</span></div><div className="practice-tag tag-two">02 <span>Practise</span></div><div className="practice-tag tag-three">03 <span>Improve</span></div></div>
+        </section>
+
+        <section className="section section-topics">
+          <div className="section-heading"><div><span className="eyebrow">QUICK START</span><h2>Popular topics</h2><p>Jump into a focused practice session.</p></div><Link className="text-link" href="/subjects">Browse topics <span aria-hidden>↗</span></Link></div>
+          <div className="topic-grid">{topics.slice(0, 6).map((topic) => <Link className="popular-topic" href={`/topics/${topic.slug}`} key={topic.slug}><span className="popular-topic-icon">↗</span><span><strong>{topic.name}</strong><small>{topic.subjectName} · {topic.questionCount} questions</small></span></Link>)}</div>
+        </section>
+
+        <section className="section paper-section">
+          <div className="section-heading"><div><span className="eyebrow">TEST YOUR PREPARATION</span><h2>Practice sets & papers</h2><p>Try a short exam-style set and review what you know.</p></div><Link className="text-link" href="/past-papers">View all papers <span aria-hidden>↗</span></Link></div>
+          <div className="paper-grid">{papers.map((paper) => <Link className="paper-card" href={`/past-papers/${paper.slug}`} key={paper.slug}><span className="paper-card-type">{paper.type} <span>· {paper.year}</span></span><strong>{paper.title}</strong><span className="paper-exam">{paper.exam}</span><span className="paper-card-footer">{paper.topicSlugs.length} topics <b>Open set <span aria-hidden>→</span></b></span></Link>)}</div>
+        </section>
+
+        <section className="closing-cta"><span className="closing-star">✳</span><div><span className="eyebrow">YOUR NEXT STEP STARTS HERE</span><h2>Ready when you are.</h2><p>Pick a topic and begin practising for free.</p></div><Link className="button button-primary" href="/subjects">Explore subjects <span aria-hidden>→</span></Link></section>
       </main>
-    </div>
+    </>
   );
 }
