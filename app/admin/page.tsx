@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { AdminDashboard } from "@/components/AdminDashboard";
 import { AdminLoginForm } from "@/components/AdminLoginForm";
-import { adminLoginConfigured, getAdminPrincipal } from "@/lib/admin-auth";
+import { adminLoginConfigured, getAdminCapabilities, getAdminPrincipal } from "@/lib/admin-auth";
 import { hasDatabase } from "@/lib/db";
 
 export const metadata: Metadata = {
@@ -21,7 +21,7 @@ async function AdminPanel() {
       ) : !hasDatabase ? (
         <section className="admin-card"><div className="admin-brand"><span className="admin-brand-mark">M</span><span><strong>MCQPath</strong><small>ADMIN WORKSPACE</small></span></div><h2>Connect MySQL to manage content</h2><p>Set database values in <code>.env.local</code>, then apply <code>001_initial_schema.sql</code> and <code>002_role_based_admin.sql</code>.</p></section>
       ) : (
-        <AdminDashboard principal={principal} canManageUsers={principal.role === "admin" || principal.role === "super_admin"} />
+        <AdminDashboard principal={principal} capabilities={getAdminCapabilities(principal)} />
       )}
     </main>
   );
