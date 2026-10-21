@@ -10,6 +10,7 @@ type PickerRow = RowDataPacket & {
   subject_id: number;
   subject_name: string;
   prompt: string;
+  source_note: string;
   status: "draft" | "published" | "archived";
   difficulty: "easy" | "medium" | "hard";
 };
@@ -22,6 +23,7 @@ function formatQuestions(rows: PickerRow[]) {
     subjectId: row.subject_id,
     subjectName: row.subject_name,
     prompt: row.prompt,
+    sourceNote: row.source_note,
     status: row.status,
     difficulty: row.difficulty,
   }));
@@ -40,7 +42,7 @@ export async function GET(request: Request) {
     const marks = ids.map(() => "?").join(",");
     const [rows] = await db.execute<PickerRow[]>(
       `SELECT q.id, q.topic_id, t.name AS topic_name, s.id AS subject_id,
-              s.name AS subject_name, q.question_text AS prompt, q.status, q.difficulty
+              s.name AS subject_name, q.question_text AS prompt, q.source_note, q.status, q.difficulty
        FROM questions q JOIN topics t ON t.id = q.topic_id JOIN subjects s ON s.id = t.subject_id
        WHERE q.id IN (${marks})`, ids,
     );
@@ -72,7 +74,7 @@ export async function GET(request: Request) {
   const offset = (page - 1) * pageSize;
   const [rows] = await db.execute<PickerRow[]>(
     `SELECT q.id, q.topic_id, t.name AS topic_name, s.id AS subject_id,
-            s.name AS subject_name, q.question_text AS prompt, q.status, q.difficulty
+            s.name AS subject_name, q.question_text AS prompt, q.source_note, q.status, q.difficulty
      ${from} ${where} ORDER BY q.updated_at DESC, q.id DESC LIMIT ? OFFSET ?`,
     [...values, pageSize, offset],
   );
