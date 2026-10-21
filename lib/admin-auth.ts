@@ -6,14 +6,22 @@ export const ADMIN_COOKIE = "mcqs_admin";
 export const ADMIN_SESSION_SECONDS = 60 * 60 * 8;
 
 export type AdminRole = "super_admin" | "admin" | "editor" | "reviewer";
-export type AdminPermission = "content:view" | "questions:manage" | "categories:manage" | "papers:manage" | "content:publish" | "users:manage";
+export type AdminPermission = "content:view" | "questions:manage" | "categories:manage" | "papers:manage" | "content:publish" | "content:delete" | "users:manage";
 export type AdminPrincipal = { id: string; name: string; email: string; role: AdminRole };
+export type AdminCapabilities = {
+  manageQuestions: boolean;
+  manageCategories: boolean;
+  managePapers: boolean;
+  publishContent: boolean;
+  deleteContent: boolean;
+  manageUsers: boolean;
+};
 
 const rolePermissions: Record<AdminRole, AdminPermission[]> = {
-  super_admin: ["content:view", "questions:manage", "categories:manage", "papers:manage", "content:publish", "users:manage"],
-  admin: ["content:view", "questions:manage", "categories:manage", "papers:manage", "content:publish", "users:manage"],
-  editor: ["content:view", "questions:manage", "categories:manage", "papers:manage"],
-  reviewer: ["content:view", "content:publish"],
+  super_admin: ["content:view", "questions:manage", "categories:manage", "papers:manage", "content:publish", "content:delete", "users:manage"],
+  admin: ["content:view", "questions:manage", "categories:manage", "papers:manage", "content:publish"],
+  editor: ["content:view", "questions:manage"],
+  reviewer: ["content:view", "questions:manage", "categories:manage"],
 };
 
 function sessionSecret() {
@@ -108,8 +116,19 @@ export function hasPermission(principal: AdminPrincipal, permission: AdminPermis
   return rolePermissions[principal.role].includes(permission);
 }
 
+export function getAdminCapabilities(principal: AdminPrincipal): AdminCapabilities {
+  return {
+    manageQuestions: hasPermission(principal, "questions:manage"),
+    manageCategories: hasPermission(principal, "categories:manage"),
+    managePapers: hasPermission(principal, "papers:manage"),
+    publishContent: hasPermission(principal, "content:publish"),
+    deleteContent: hasPermission(principal, "content:delete"),
+    manageUsers: hasPermission(principal, "users:manage"),
+  };
+}
+
 export const ADMIN_ROLES: Array<{ value: AdminRole; label: string }> = [
-  { value: "admin", label: "Admin" },
-  { value: "editor", label: "Editor" },
-  { value: "reviewer", label: "Reviewer" },
+  { value: "editor", label: "MCQ Contributor" },
+  { value: "reviewer", label: "Category & MCQ Manager" },
+  { value: "admin", label: "Paper Manager" },
 ];
