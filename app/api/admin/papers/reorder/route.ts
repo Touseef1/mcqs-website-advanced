@@ -1,12 +1,15 @@
 import { revalidatePath, revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import type { RowDataPacket } from "mysql2";
-import { getAdminPrincipal, hasPermission } from "@/lib/admin-auth";
+import { getAdminPrincipal, requirePermission } from "@/lib/admin-auth";
 import { db, hasDatabase } from "@/lib/db";
 
+import { auditAdmin, csrfFailure } from "@/lib/admin-security";
 export async function POST(request: Request) {
+  const csrf = csrfFailure(request);
+  if (csrf) return csrf;
   const principal = await getAdminPrincipal();
-  if (!principal || !hasPermission(principal, "papers:manage")) return NextResponse.json({ error: "Your role cannot reorder past-paper questions." }, { status: 403 });
+  if (!principal || !requirePermission(principal, "paper.manage")) return NextResponse.json({ error: "Your role cannot reorder past-paper questions." }, { status: 403 });
   if (!hasDatabase || !db) return NextResponse.json({ error: "Configure MySQL and apply the database migrations first." }, { status: 503 });
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   const paperId = Number(body?.paperId);
@@ -44,6 +47,7 @@ export async function POST(request: Request) {
   } finally {
     connection.release();
   }
+  await auditAdmin(principal, request, "reorder", "paper", paperId, null, { questionIds });
   revalidatePath("/past-papers");
   revalidateTag("papers", "max");
   revalidateTag("questions", "max");

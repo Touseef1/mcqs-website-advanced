@@ -1,8 +1,9 @@
 import type { RowDataPacket } from "mysql2";
 import { NextResponse } from "next/server";
-import { getAdminPrincipal, hasPermission } from "@/lib/admin-auth";
+import { getAdminPrincipal, requirePermission } from "@/lib/admin-auth";
 import { db, hasDatabase } from "@/lib/db";
 
+import { csrfFailure } from "@/lib/admin-security";
 function normalize(value: string) {
   return value.normalize("NFKC").toLocaleLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
 }
@@ -28,8 +29,10 @@ function similarity(first: string, second: string) {
 }
 
 export async function POST(request: Request) {
+  const csrf = csrfFailure(request);
+  if (csrf) return csrf;
   const principal = await getAdminPrincipal();
-  if (!principal || !hasPermission(principal, "questions:manage")) return NextResponse.json({ error: "Your role cannot check MCQs." }, { status: 403 });
+  if (!principal || (!requirePermission(principal, "mcq.edit_any") && !requirePermission(principal, "mcq.edit_own"))) return NextResponse.json({ error: "Your role cannot check MCQs." }, { status: 403 });
   if (!hasDatabase || !db) return NextResponse.json({ similar: [] });
   const body = await request.json().catch(() => null);
   const topicId = Number(body?.topicId);

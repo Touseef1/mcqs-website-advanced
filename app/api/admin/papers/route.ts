@@ -1,10 +1,11 @@
 import { revalidatePath, revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import type { RowDataPacket } from "mysql2";
-import { getAdminPrincipal, hasPermission } from "@/lib/admin-auth";
+import { getAdminPrincipal, requirePermission } from "@/lib/admin-auth";
 import { requestedStatus, slugify, validSlug } from "@/lib/admin-content";
 import { db, hasDatabase } from "@/lib/db";
 
+import { auditAdmin, csrfFailure } from "@/lib/admin-security";
 function noDatabase() {
   return NextResponse.json({ error: "Configure MySQL and apply the database migrations first." }, { status: 503 });
 }
@@ -29,7 +30,7 @@ function parsePaper(body: Record<string, unknown> | null) {
 
 export async function GET() {
   const principal = await getAdminPrincipal();
-  if (!principal || !hasPermission(principal, "content:view")) return NextResponse.json({ error: "Sign in with a content role." }, { status: 401 });
+  if (!principal || !requirePermission(principal, "content:view")) return NextResponse.json({ error: "Sign in with a content role." }, { status: 401 });
   if (!hasDatabase || !db) return noDatabase();
   const [papers] = await db.execute<Array<RowDataPacket & { id: number; exam_id: number; exam_name: string; title: string; slug: string; year: number; type: string; description: string; status: string; question_count: number }>>(
     `SELECT p.id, p.exam_id, e.name AS exam_name, p.title, p.slug, p.year,
@@ -49,12 +50,12 @@ export async function GET() {
   })) }, { headers: { "Cache-Control": "no-store" } });
 }
 
-async function savePaper(body: Record<string, unknown> | null, update: boolean) {
+async function savePaper(request: Request, body: Record<string, unknown> | null, update: boolean) {
   const principal = await getAdminPrincipal();
   if (!principal) return NextResponse.json({ error: "Please sign in first." }, { status: 401 });
   if (update && (body?.status === "published" || body?.status === "archived")) {
-    const permission = body.status === "published" ? "content:publish" : "content:delete";
-    if (!hasPermission(principal, permission)) return NextResponse.json({ error: body.status === "published" ? "Only Paper Managers and Super Admins can publish past papers." : "Only the Super Admin can archive past papers." }, { status: 403 });
+    const permission = body.status === "published" ? "paper.publish" : "paper.manage";
+    if (!requirePermission(principal, permission)) return NextResponse.json({ error: body.status === "published" ? "Only Publishers, Admins, and Super Admins can publish past papers." : "Your role cannot archive past papers." }, { status: 403 });
     if (!hasDatabase || !db) return noDatabase();
     const id = Number(body.id);
     if (!Number.isInteger(id) || id < 1) return NextResponse.json({ error: "Choose a valid past paper." }, { status: 400 });
@@ -67,16 +68,18 @@ async function savePaper(body: Record<string, unknown> | null, update: boolean) 
     }
     const [exists] = await db.execute<Array<RowDataPacket & { id: number }>>("SELECT id FROM papers WHERE id = ? LIMIT 1", [id]);
     if (!exists[0]) return NextResponse.json({ error: "Past paper not found." }, { status: 404 });
-    await db.execute("UPDATE papers SET status = ? WHERE id = ?", [body.status, id]);
+    await db.execute("UPDATE papers SET status = ?, updated_by = ? WHERE id = ?", [body.status, principal.id, id]);
+    await auditAdmin(principal, request, body.status, "paper", id, null, { status: body.status });
     refreshPapers();
     return NextResponse.json({ ok: true });
   }
-  if (!hasPermission(principal, "papers:manage")) return NextResponse.json({ error: "Your role cannot manage past papers." }, { status: 403 });
+  if (!requirePermission(principal, "paper.manage")) return NextResponse.json({ error: "Your role cannot manage past papers." }, { status: 403 });
   if (!hasDatabase || !db) return noDatabase();
   const paper = parsePaper(body);
   const id = Number(body?.id);
   if (!paper || (update && (!Number.isInteger(id) || id < 1))) return NextResponse.json({ error: "Complete the exam, title, year, description, slug, and select at least one question." }, { status: 400 });
   const status = requestedStatus(body?.status, principal);
+  let savedPaperId = id;
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
@@ -103,16 +106,17 @@ async function savePaper(body: Record<string, unknown> | null, update: boolean) 
         return NextResponse.json({ error: "Past paper not found." }, { status: 404 });
       }
       await connection.execute(
-        "UPDATE papers SET exam_id = ?, title = ?, slug = ?, year = ?, paper_type = ?, description = ?, status = ? WHERE id = ?",
-        [examId, paper.title, paper.slug, paper.year, paper.type, paper.description, status, id],
+        "UPDATE papers SET exam_id = ?, title = ?, slug = ?, year = ?, paper_type = ?, description = ?, status = ?, updated_by = ? WHERE id = ?",
+        [examId, paper.title, paper.slug, paper.year, paper.type, paper.description, status, principal.id, id],
       );
       await connection.execute("DELETE FROM paper_questions WHERE paper_id = ?", [id]);
     } else {
       const [insert] = await connection.execute(
-        "INSERT INTO papers (exam_id, title, slug, year, paper_type, description, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        [examId, paper.title, paper.slug, paper.year, paper.type, paper.description, status],
+        "INSERT INTO papers (exam_id, title, slug, year, paper_type, description, status, created_by, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [examId, paper.title, paper.slug, paper.year, paper.type, paper.description, status, principal.id, principal.id],
       );
       paperId = (insert as { insertId: number }).insertId;
+      savedPaperId = paperId;
     }
     for (const [index, questionId] of paper.questionIds.entries()) {
       await connection.execute("INSERT INTO paper_questions (paper_id, question_id, question_order) VALUES (?, ?, ?)", [paperId, questionId, index + 1]);
@@ -126,26 +130,34 @@ async function savePaper(body: Record<string, unknown> | null, update: boolean) 
   } finally {
     connection.release();
   }
+  await auditAdmin(principal, request, update ? "update" : "create", "paper", update ? id : savedPaperId, null, { title: paper.title, status, questionIds: paper.questionIds });
   refreshPapers();
   return NextResponse.json({ ok: true });
 }
 
 export async function POST(request: Request) {
-  return savePaper(await request.json().catch(() => null), false);
+  const csrf = csrfFailure(request);
+  if (csrf) return csrf;
+  return savePaper(request, await request.json().catch(() => null), false);
 }
 
 export async function PATCH(request: Request) {
-  return savePaper(await request.json().catch(() => null), true);
+  const csrf = csrfFailure(request);
+  if (csrf) return csrf;
+  return savePaper(request, await request.json().catch(() => null), true);
 }
 
 export async function DELETE(request: Request) {
+  const csrf = csrfFailure(request);
+  if (csrf) return csrf;
   const principal = await getAdminPrincipal();
-  if (!principal || !hasPermission(principal, "content:delete")) return NextResponse.json({ error: "Only the Super Admin can archive past papers." }, { status: 403 });
+  if (!principal || !requirePermission(principal, "paper.manage")) return NextResponse.json({ error: "Your role cannot archive past papers." }, { status: 403 });
   if (!hasDatabase || !db) return noDatabase();
   const body = await request.json().catch(() => null);
   const id = Number(body?.id);
   if (!Number.isInteger(id) || id < 1) return NextResponse.json({ error: "Choose a valid past paper." }, { status: 400 });
-  await db.execute("UPDATE papers SET status = 'archived' WHERE id = ?", [id]);
+  await db.execute("UPDATE papers SET status = 'archived', updated_by = ? WHERE id = ?", [principal.id, id]);
+  await auditAdmin(principal, request, "archive", "paper", id, null, { status: "archived" });
   refreshPapers();
   return NextResponse.json({ ok: true });
 }

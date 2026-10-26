@@ -71,9 +71,9 @@ MCQPath is a search-friendly MCQ and exam-practice website for learners in Pakis
 
    Open [http://localhost:3000](http://localhost:3000). The admin area is at `/admin`.
 
-Without MySQL, the site shows category placeholders only; it does not show generated MCQs or sample papers. The admin area requires MySQL, migrations `001`, `002`, and `005`, and its environment settings. Learner registration, bookmarks, and quiz history additionally require migration `003` and `SESSION_SECRET`.
+Without MySQL, the site shows category placeholders only; it does not show generated MCQs or sample papers. The admin area requires MySQL, migrations `001`, `002`, `005`, and `006`, and its environment settings. Learner registration, bookmarks, and quiz history additionally require migration `003` and `SESSION_SECRET`.
 
-Every MCQ needs an exam/source reference in the admin form. MCQs without this reference cannot be published. The paper builder searches the full bank on the server, lets editors filter by subject, topic, and status, add all matching questions from a page, and arrange the selected question order.
+Every MCQ needs an exam/source reference in the admin form. MCQs without this reference cannot be published. MCQs now follow draft, review, approval, publication, and archive states. Data Entry staff can edit only their own drafts; review and publishing permissions are separate. The paper builder searches the bank and orders questions.
 
 ## Admin roles
 
@@ -86,7 +86,7 @@ Sign in at `/admin` with the `ADMIN_EMAIL` and `ADMIN_PASSWORD` configured in `.
 | Editor | Create and edit subjects/topics, MCQs, and papers as drafts |
 | Reviewer | Review records and publish or archive content |
 
-Editors' changes are saved as drafts. A reviewer or admin must publish them before learners can see the content. Removing team access is done by setting the account to **Inactive**, which also ends its access on its next request.
+New staff accounts must change their temporary password on first login. Admin sessions are invalidated immediately when accounts are deactivated, roles change, or passwords reset. See `docs/ADMIN_ROLES.md` for the permission matrix and migration steps.
 
 ## Useful commands
 

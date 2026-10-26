@@ -139,7 +139,7 @@ All primary content tables use InnoDB and `utf8mb4`. IDs are unsigned auto-incre
 
 | Table | Important columns | Purpose and relationships |
 |---|---|---|
-| `admin_users` | `id`, `name`, `email`, `password_hash`, `role`, `status`, timestamps | Staff accounts. Email is unique. Database roles are `editor`, `reviewer`, and `admin`; the bootstrap Super Admin is configured through environment variables rather than this enum. |
+| `admin_users` | `id`, `name`, `email`, `password_hash`, `role`, `status`, timestamps | Staff accounts. Email is unique. Database roles are `super_admin`, `admin`, `data_entry`, `reviewer`, and `publisher`; migration 006 maps legacy `editor` to `data_entry` and legacy Paper Manager `admin` to `publisher`. The bootstrap Super Admin is persisted in this table at first login. |
 | `learners` | `id`, `name`, `email`, `password_hash`, `status`, timestamps | Learner accounts. Email is unique. |
 | `learner_bookmarks` | `learner_id`, `question_id`, `created_at` | Join table saving questions per learner. Composite primary key prevents duplicate bookmarks. |
 | `quiz_attempts` | `id`, `learner_id`, `quiz_title`, `quiz_path`, `score`, `question_count`, `elapsed_seconds`, `completed_at` | Stores a learner's quiz history and score summary. |
@@ -152,12 +152,12 @@ This table summarizes the MySQL storage types and the most important rules from 
 |---|---|---|
 | `subjects` | `id BIGINT UNSIGNED`; `name VARCHAR(120)`; `slug VARCHAR(140)`; `description TEXT`; `sort_order INT`; `status ENUM('draft','published','archived')`; `created_at`, `updated_at TIMESTAMP` | `id` is primary key; slug is unique; index on status/order. |
 | `topics` | `id BIGINT UNSIGNED`; `subject_id BIGINT UNSIGNED`; `name VARCHAR(160)`; `slug VARCHAR(180)`; `description TEXT`; `sort_order INT`; same status/timestamp format as subjects | Slug is unique; FK to subject; index on parent/status/order. |
-| `questions` | `id BIGINT UNSIGNED`; `topic_id BIGINT UNSIGNED`; `question_text TEXT`; `explanation TEXT`; `source_note VARCHAR(500)`; `correct_choice CHAR(1)`; `difficulty ENUM('easy','medium','hard')`; `status ENUM('draft','published','archived')`; timestamps | FK to topic; index on topic/status/id. Source note is non-null and defaults to empty text on upgraded installations. |
+| `questions` | `id BIGINT UNSIGNED`; `topic_id BIGINT UNSIGNED`; `question_text TEXT`; `explanation TEXT`; `source_note VARCHAR(500)`; `correct_choice CHAR(1)`; `difficulty ENUM('easy','medium','hard')`; `status ENUM('draft','in_review','approved','published','rejected','archived')`; `created_by`, `updated_by`, `reviewed_by`, `reviewed_at`, `review_note`; timestamps | FK to topic; index on topic/status/id. Source note is non-null and defaults to empty text on upgraded installations. |
 | `choices` | `id BIGINT UNSIGNED`; `question_id BIGINT UNSIGNED`; `label CHAR(1)`; `choice_text TEXT` | Unique `(question_id, label)`; FK to question with cascade delete. |
 | `exams` | `id BIGINT UNSIGNED`; `name VARCHAR(160)`; `slug VARCHAR(180)` | Slug is unique. |
 | `papers` | `id BIGINT UNSIGNED`; `exam_id BIGINT UNSIGNED`; `title VARCHAR(220)`; `slug VARCHAR(240)`; `year SMALLINT UNSIGNED`; `paper_type ENUM('Past paper')`; `description TEXT`; status enum with draft/published/archived; timestamps are not defined in the initial migration | Slug is unique; FK to exam; index on exam/year. |
 | `paper_questions` | `paper_id BIGINT UNSIGNED`; `question_id BIGINT UNSIGNED`; `question_order INT` | Composite primary key `(paper_id, question_id)`; unique `(paper_id, question_order)`; FKs to paper and question. |
-| `admin_users` | `id BIGINT UNSIGNED`; `name VARCHAR(140)`; `email VARCHAR(190)`; `password_hash VARCHAR(180)`; `role ENUM('admin','editor','reviewer')`; `status ENUM('active','inactive')`; timestamps | Unique email; index on role/status. Bootstrap `super_admin` is an environment-backed account, not an enum member. |
+| `admin_users` | `id BIGINT UNSIGNED`; `name VARCHAR(140)`; `email VARCHAR(190)`; `password_hash VARCHAR(180)`; `role ENUM('super_admin','admin','data_entry','reviewer','publisher')`; `status ENUM('active','inactive')`; session/security fields; timestamps | Unique email; index on role/status. Bootstrap `super_admin` is stored in the database after first login. |
 | `learners` | `id BIGINT UNSIGNED`; `name VARCHAR(140)`; `email VARCHAR(190)`; `password_hash VARCHAR(180)`; `status ENUM('active','inactive')`; timestamps | Unique email; index on status. |
 | `learner_bookmarks` | `learner_id BIGINT UNSIGNED`; `question_id BIGINT UNSIGNED`; `created_at TIMESTAMP` | Composite primary key `(learner_id, question_id)`; both FKs cascade on delete. |
 | `quiz_attempts` | `id BIGINT UNSIGNED`; `learner_id BIGINT UNSIGNED`; `quiz_title VARCHAR(220)`; `quiz_path VARCHAR(260)`; `score SMALLINT UNSIGNED`; `question_count SMALLINT UNSIGNED`; `elapsed_seconds INT UNSIGNED`; `completed_at TIMESTAMP` | FK to learner; index on learner/completion date. |
@@ -191,10 +191,11 @@ Therefore, one MCQ can be linked to multiple papers without duplicating the ques
 
 | Role | Capabilities |
 |---|---|
-| MCQ Contributor (`editor`) | View and create/edit MCQs as drafts. Cannot manage categories, papers, publishing, archiving, or team accounts. |
-| Category & MCQ Manager (`reviewer`) | Manage MCQs and categories as drafts. Cannot manage papers, publish, archive, or manage team accounts. |
-| Paper Manager (`admin`) | Manage MCQs, categories, and papers; can publish content. Cannot archive content or manage team accounts. |
-| Super Admin (`super_admin`) | Full access, including publishing, archiving content, and managing team accounts. Bootstrap identity is created from `ADMIN_EMAIL` and `ADMIN_PASSWORD`. |
+| Data Entry (`data_entry`) | Create MCQs and edit own drafts. |
+| Reviewer (`reviewer`) | Review submitted MCQs, edit, approve or reject with a comment. Cannot create papers. |
+| Publisher (`publisher`) | Manage papers and publish approved content. |
+| Admin (`admin`) | All operational content and team permissions, except Super Admin management and system settings. |
+| Super Admin (`super_admin`) | Full access, including publishing, archiving content, and managing team accounts. The bootstrap Super Admin is persisted in `admin_users` on first successful login and must change the initial password. |
 
 The matching permission checks are defined in `lib/admin-auth.ts` and enforced in the API handlers. Content deletion is currently modeled as archiving (`status = 'archived'`) so historical paper links and learner records are preserved.
 
@@ -202,9 +203,9 @@ Typical content workflow:
 
 1. Create a subject, then its topics.
 2. Add an MCQ with its category/topic, prompt, four choices, correct option, explanation, difficulty, and source/exam reference.
-3. A Paper Manager can optionally assign the MCQ to one or several active past papers in the MCQ form. The same MCQ record is reused across papers.
+3. A Publisher or Admin can optionally assign the MCQ to one or several active past papers in the MCQ form. The same MCQ record is reused across papers.
 4. Create or edit a past paper and use the question picker to choose, search, filter, and order its MCQs.
-5. Review and publish. A published question requires a published subject/topic and a source reference. A published past paper must contain published questions.
+5. Submit for review, approve or reject with a comment, then publish approved content. A published question requires a published subject/topic and a source reference. A published past paper must contain published questions.
 
 ### Fast MCQ entry workflow
 

@@ -1,10 +1,10 @@
 import { revalidatePath, revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import type { RowDataPacket } from "mysql2";
-import { getAdminPrincipal, hasPermission } from "@/lib/admin-auth";
-import { requestedStatus } from "@/lib/admin-content";
+import { getAdminPrincipal, requirePermission } from "@/lib/admin-auth";
 import { db, hasDatabase } from "@/lib/db";
 
+import { auditAdmin, csrfFailure } from "@/lib/admin-security";
 const labels = ["A", "B", "C", "D"] as const;
 type InputQuestion = { prompt: string; choices: string[]; correctChoice: string; explanation: string };
 
@@ -77,6 +77,8 @@ async function removeFromPaper(connection: import("mysql2/promise").PoolConnecti
 }
 
 export async function POST(request: Request) {
+  const csrf = csrfFailure(request);
+  if (csrf) return csrf;
   const principal = await getAdminPrincipal();
   if (!principal) return error("Please sign in first.", 401);
   if (!hasDatabase || !db) return error("Configure MySQL and apply the database migrations first.", 503);
@@ -84,17 +86,17 @@ export async function POST(request: Request) {
   const action = typeof body?.action === "string" ? body.action : "";
 
   if (action === "import") {
-    if (!hasPermission(principal, "questions:manage")) return error("Your role cannot add questions.", 403);
+    if (!requirePermission(principal, "mcq.create")) return error("Your role cannot add questions.", 403);
     const topicId = Number(body?.topicId);
     const paperId = body?.paperId === null || body?.paperId === undefined || body?.paperId === "" ? null : Number(body.paperId);
     const sourceNote = typeof body?.sourceNote === "string" ? body.sourceNote.trim() : "";
     const difficulty = body?.difficulty === "easy" || body?.difficulty === "hard" ? body.difficulty : "medium";
     const inputs = Array.isArray(body?.questions) ? body.questions : [];
     if (!Number.isSafeInteger(topicId) || topicId < 1 || sourceNote.length < 4 || sourceNote.length > 500 || inputs.length < 1 || inputs.length > 100 || (paperId !== null && (!Number.isSafeInteger(paperId) || paperId < 1))) return error("Choose a category, source reference, and 1–100 valid MCQs.");
-    if (paperId !== null && !hasPermission(principal, "papers:manage")) return error("Your role cannot add questions to past papers.", 403);
+    if (paperId !== null && !requirePermission(principal, "paper.manage")) return error("Your role cannot add questions to past papers.", 403);
     const parsed = inputs.map(parseInputQuestion);
     if (parsed.some((row) => !row)) return error("One or more MCQs failed server validation. Fix the preview errors and try again.");
-    const status = requestedStatus(body?.status, principal);
+    const status = "draft" as const;
     const connection = await db.getConnection();
     const createdIds: number[] = [];
     try {
@@ -111,16 +113,16 @@ export async function POST(request: Request) {
       }
       if (paperId !== null) {
         const [paper] = await connection.execute<Array<RowDataPacket & { id: number; status: string }>>("SELECT id, status FROM papers WHERE id = ? FOR UPDATE", [paperId]);
-        if (!paper[0] || paper[0].status === "archived" || (paper[0].status === "published" && status !== "published")) {
+        if (!paper[0] || paper[0].status === "archived" || paper[0].status === "published") {
           await connection.rollback();
           return error("Choose a draft paper, or publish these MCQs before adding them to the published paper.");
         }
       }
       for (const item of parsed as InputQuestion[]) {
         const [insert] = await connection.execute(
-          `INSERT INTO questions (topic_id, question_text, explanation, source_note, correct_choice, difficulty, status)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          [topicId, item.prompt, item.explanation, sourceNote, item.correctChoice, difficulty, status],
+          `INSERT INTO questions (topic_id, question_text, explanation, source_note, correct_choice, difficulty, status, created_by, updated_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [topicId, item.prompt, item.explanation, sourceNote, item.correctChoice, difficulty, status, principal.id, principal.id],
         );
         const questionId = Number((insert as { insertId: number }).insertId);
         createdIds.push(questionId);
@@ -143,6 +145,7 @@ export async function POST(request: Request) {
     } finally {
       connection.release();
     }
+    await auditAdmin(principal, request, "bulk_create", "question", null, null, { questionIds: createdIds, topicId, paperId });
     refreshContent();
     return NextResponse.json({ ok: true, ids: createdIds, count: createdIds.length });
   }
@@ -152,12 +155,13 @@ export async function POST(request: Request) {
   const topicId = Number(body?.topicId);
   const paperId = Number(body?.paperId);
 
-  if (action === "change-category" && !hasPermission(principal, "questions:manage")) return error("Your role cannot edit questions.", 403);
-  if (action === "submit-review" && !hasPermission(principal, "questions:manage")) return error("Your role cannot submit questions for review.", 403);
-  if (action === "publish" && !hasPermission(principal, "content:publish")) return error("Only Paper Managers and Super Admins can publish questions.", 403);
-  if (action === "archive" && !hasPermission(principal, "content:delete")) return error("Only the Super Admin can archive questions.", 403);
-  if ((action === "add-to-paper" || action === "remove-from-paper") && !hasPermission(principal, "papers:manage")) return error("Your role cannot manage past-paper questions.", 403);
-  if (!["change-category", "submit-review", "publish", "archive", "add-to-paper", "remove-from-paper"].includes(action)) return error("Choose a supported bulk action.");
+  if (action === "change-category" && !requirePermission(principal, "mcq.edit_any") && !requirePermission(principal, "mcq.edit_own")) return error("Your role cannot edit questions.", 403);
+  if (action === "submit-review" && !requirePermission(principal, "mcq.edit_own")) return error("Your role cannot submit questions for review.", 403);
+  if (action === "approve" && !requirePermission(principal, "mcq.review")) return error("Your role cannot approve submitted MCQs.", 403);
+  if (action === "publish" && !requirePermission(principal, "mcq.publish")) return error("Only Paper Managers and Super Admins can publish questions.", 403);
+  if (action === "archive" && !requirePermission(principal, "mcq.archive")) return error("Only the Super Admin can archive questions.", 403);
+  if ((action === "add-to-paper" || action === "remove-from-paper") && !requirePermission(principal, "paper.manage")) return error("Your role cannot manage past-paper questions.", 403);
+  if (!["change-category", "submit-review", "approve", "publish", "archive", "add-to-paper", "remove-from-paper"].includes(action)) return error("Choose a supported bulk action.");
   if (action === "change-category" && (!Number.isSafeInteger(topicId) || topicId < 1)) return error("Choose a valid category.");
   if ((action === "add-to-paper" || action === "remove-from-paper") && (!Number.isSafeInteger(paperId) || paperId < 1)) return error("Choose a valid past paper.");
 
@@ -165,8 +169,8 @@ export async function POST(request: Request) {
   try {
     await connection.beginTransaction();
     const marks = ids.map(() => "?").join(",");
-    const [questions] = await connection.execute<Array<RowDataPacket & { id: number; status: string; source_note: string; topic_status: string; subject_status: string }>>(
-      `SELECT q.id, q.status, q.source_note, t.status AS topic_status, s.status AS subject_status
+    const [questions] = await connection.execute<Array<RowDataPacket & { id: number; status: string; source_note: string; topic_status: string; subject_status: string; created_by: number | null }>>(
+      `SELECT q.id, q.status, q.source_note, q.created_by, t.status AS topic_status, s.status AS subject_status
        FROM questions q JOIN topics t ON t.id = q.topic_id JOIN subjects s ON s.id = t.subject_id
        WHERE q.id IN (${marks}) FOR UPDATE`, ids,
     );
@@ -179,25 +183,30 @@ export async function POST(request: Request) {
         `SELECT t.id FROM topics t JOIN subjects s ON s.id = t.subject_id
          WHERE t.id = ? AND t.status != 'archived' AND s.status != 'archived'`, [topicId],
       );
-      if (!topic[0] || questions.some((question) => question.status === "archived") || (questions.some((question) => question.status === "published") && !hasPermission(principal, "content:publish"))) {
+      if (!topic[0] || questions.some((question) => question.status === "archived") || questions.some((question) => !requirePermission(principal, "mcq.edit_any") && (String(question.created_by) !== principal.id || question.status !== "draft"))) {
         await connection.rollback();
         return error("Choose an active category. Your role can change categories on draft MCQs only.", 403);
       }
-      await connection.execute(`UPDATE questions SET topic_id = ? WHERE id IN (${marks})`, [topicId, ...ids]);
+      await connection.execute(`UPDATE questions SET topic_id = ?, updated_by = ? WHERE id IN (${marks})`, [topicId, principal.id, ...ids]);
     } else if (action === "submit-review") {
-      if (questions.some((question) => question.status !== "draft")) {
+      if (questions.some((question) => question.status !== "draft" || String(question.created_by) !== principal.id)) {
         await connection.rollback();
         return error("Only draft MCQs can be submitted for review.");
       }
-      await connection.execute(`UPDATE questions SET status = 'draft' WHERE id IN (${marks})`, ids);
+      await connection.execute(`UPDATE questions SET status = 'in_review', updated_by = ? WHERE id IN (${marks})`, [principal.id, ...ids]);
+    } else if (action === "approve") {
+      const reviewNote = typeof body?.reviewNote === "string" ? body.reviewNote.trim() : "";
+      if (!reviewNote) { await connection.rollback(); return error("Add a review comment when approving MCQs."); }
+      if (questions.some((question) => question.status !== "in_review")) { await connection.rollback(); return error("Only submitted MCQs can be approved."); }
+      await connection.execute(`UPDATE questions SET status = 'approved', reviewed_by = ?, reviewed_at = NOW(), review_note = ?, updated_by = ? WHERE id IN (${marks})`, [principal.id, reviewNote, principal.id, ...ids]);
     } else if (action === "publish") {
-      if (questions.some((question) => question.status === "archived" || !question.source_note.trim() || question.topic_status !== "published" || question.subject_status !== "published")) {
+      if (questions.some((question) => question.status !== "approved" || !question.source_note.trim() || question.topic_status !== "published" || question.subject_status !== "published")) {
         await connection.rollback();
         return error("Every selected MCQ needs a source and a published subject/topic before it can be published.");
       }
-      await connection.execute(`UPDATE questions SET status = 'published' WHERE id IN (${marks})`, ids);
+      await connection.execute(`UPDATE questions SET status = 'published', updated_by = ? WHERE id IN (${marks})`, [principal.id, ...ids]);
     } else if (action === "archive") {
-      await connection.execute(`UPDATE questions SET status = 'archived' WHERE id IN (${marks})`, ids);
+      await connection.execute(`UPDATE questions SET status = 'archived', updated_by = ? WHERE id IN (${marks})`, [principal.id, ...ids]);
     } else if (action === "add-to-paper") {
       const [paper] = await connection.execute<Array<RowDataPacket & { id: number; status: string }>>("SELECT id, status FROM papers WHERE id = ? FOR UPDATE", [paperId]);
       if (!paper[0] || paper[0].status === "archived" || questions.some((question) => question.status === "archived") || (paper[0].status === "published" && questions.some((question) => question.status !== "published"))) {
@@ -225,6 +234,7 @@ export async function POST(request: Request) {
   } finally {
     connection.release();
   }
+  await auditAdmin(principal, request, action, "question", null, { ids }, { action, ids, topicId: action === "change-category" ? topicId : undefined, paperId: ["add-to-paper", "remove-from-paper"].includes(action) ? paperId : undefined });
   refreshContent();
   return NextResponse.json({ ok: true, count: ids.length });
 }

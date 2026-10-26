@@ -1,6 +1,6 @@
 import type { RowDataPacket } from "mysql2";
 import { NextResponse } from "next/server";
-import { getAdminPrincipal, hasPermission } from "@/lib/admin-auth";
+import { getAdminPrincipal, requirePermission } from "@/lib/admin-auth";
 import { db, hasDatabase } from "@/lib/db";
 
 type PickerRow = RowDataPacket & {
@@ -31,7 +31,7 @@ function formatQuestions(rows: PickerRow[]) {
 
 export async function GET(request: Request) {
   const principal = await getAdminPrincipal();
-  if (!principal || !hasPermission(principal, "content:view")) return NextResponse.json({ error: "Sign in with a content role." }, { status: 401 });
+  if (!principal || !requirePermission(principal, "content:view")) return NextResponse.json({ error: "Sign in with a content role." }, { status: 401 });
   if (!hasDatabase || !db) return NextResponse.json({ error: "Configure MySQL and apply the database migrations first." }, { status: 503 });
 
   const params = new URL(request.url).searchParams;

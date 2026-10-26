@@ -1,12 +1,15 @@
 import type { RowDataPacket } from "mysql2";
 import { NextResponse } from "next/server";
-import { getAdminPrincipal, hasPermission } from "@/lib/admin-auth";
+import { getAdminPrincipal, requirePermission } from "@/lib/admin-auth";
 import { slugify, validSlug } from "@/lib/admin-content";
 import { db, hasDatabase } from "@/lib/db";
 
+import { auditAdmin, csrfFailure } from "@/lib/admin-security";
 export async function POST(request: Request) {
+  const csrf = csrfFailure(request);
+  if (csrf) return csrf;
   const principal = await getAdminPrincipal();
-  if (!principal || !hasPermission(principal, "papers:manage")) return NextResponse.json({ error: "Your role cannot create past papers." }, { status: 403 });
+  if (!principal || !requirePermission(principal, "paper.manage")) return NextResponse.json({ error: "Your role cannot create past papers." }, { status: 403 });
   if (!hasDatabase || !db) return NextResponse.json({ error: "Configure MySQL and apply the database migrations first." }, { status: 503 });
   const body = await request.json().catch(() => null);
   const examName = typeof body?.examName === "string" ? body.examName.trim() : "";
@@ -27,13 +30,14 @@ export async function POST(request: Request) {
     const examId = Number((examResult as { insertId: number }).insertId);
     const description = `${examName} ${year} past paper. Add source details and verified MCQs before publishing.`;
     const [paperResult] = await connection.execute(
-      `INSERT INTO papers (exam_id, title, slug, year, paper_type, description, status)
-       VALUES (?, ?, ?, ?, 'Past paper', ?, 'draft')`,
-      [examId, title, slug, year, description],
+      `INSERT INTO papers (exam_id, title, slug, year, paper_type, description, status, created_by, updated_by)
+       VALUES (?, ?, ?, ?, 'Past paper', ?, 'draft', ?, ?)`,
+      [examId, title, slug, year, description, principal.id, principal.id],
     );
     const id = Number((paperResult as { insertId: number }).insertId);
     const [rows] = await connection.execute<Array<RowDataPacket & { exam_name: string }>>("SELECT name AS exam_name FROM exams WHERE id = ? LIMIT 1", [examId]);
     await connection.commit();
+    await auditAdmin(principal, request, "create", "paper", id, null, { title, examName, year, status: "draft" });
     return NextResponse.json({ ok: true, paper: { id, examId, examName: rows[0]?.exam_name ?? examName, title, slug, year, type: "Past paper", description, status: "draft", questionCount: 0, questionIds: [] } }, { status: 201 });
   } catch (cause) {
     await connection.rollback();

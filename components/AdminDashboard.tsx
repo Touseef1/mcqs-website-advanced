@@ -6,18 +6,18 @@ import { AdminSignOutButton } from "@/components/AdminSignOutButton";
 import { AdminQuestionWorkspace } from "@/components/AdminQuestionWorkspace";
 import type { AdminCapabilities, AdminPrincipal, AdminRole } from "@/lib/admin-auth";
 
-type Status = "draft" | "published" | "archived";
+type Status = "draft" | "in_review" | "approved" | "published" | "rejected" | "archived";
 type SubjectRow = { id: number; name: string; slug: string; description: string; status: Status; topic_count: number };
 type TopicRow = { id: number; subject_id: number; subject_name: string; name: string; slug: string; description: string; status: Status; question_count: number };
-type AdminQuestion = { id: number; topicId: number; topicName: string; subjectName: string; prompt: string; explanation: string; sourceNote: string; correctChoice: string; difficulty: "easy" | "medium" | "hard"; status: Status; paperIds: number[]; choices: Array<{ label: string; text: string }> };
+type AdminQuestion = { id: number; createdBy?: number | string; topicId: number; topicName: string; subjectName: string; prompt: string; explanation: string; sourceNote: string; correctChoice: string; difficulty: "easy" | "medium" | "hard"; status: Status; reviewNote?: string | null; paperIds: number[]; choices: Array<{ label: string; text: string }> };
 type AdminPaper = { id: number; examId: number; examName: string; title: string; slug: string; year: number; type: "Past paper"; description: string; status: Status; questionCount: number; questionIds: number[] };
 type PickerQuestion = { id: number; topicId: number; topicName: string; subjectId: number; subjectName: string; prompt: string; sourceNote: string; status: Status; difficulty: "easy" | "medium" | "hard" };
-type AdminUser = { id: string; name: string; email: string; role: AdminRole; status: "active" | "inactive" };
+type AdminUser = { id: string; name: string; email: string; role: AdminRole; status: "active" | "inactive"; last_login_at?: string | null };
 type Tab = "overview" | "questions" | "categories" | "papers" | "team";
 
 const tabLabels: Record<Tab, string> = { overview: "Overview", questions: "MCQ bank", categories: "Categories", papers: "Past papers", team: "Team & roles" };
 const tabIcons: Record<Tab, string> = { overview: "▦", questions: "☷", categories: "◈", papers: "▤", team: "♙" };
-const roleLabels: Record<AdminRole, string> = { editor: "MCQ Contributor", reviewer: "Category & MCQ Manager", admin: "Paper Manager", super_admin: "Super Admin" };
+const roleLabels: Record<AdminRole, string> = { data_entry: "Data Entry", reviewer: "Reviewer", publisher: "Publisher", admin: "Admin", super_admin: "Super Admin" };
 
 async function sendAdmin(path: string, method = "GET", body?: unknown) {
   const response = await fetch(path, {
@@ -117,7 +117,7 @@ export function AdminDashboard({ principal, capabilities }: { principal: AdminPr
       <div className="admin-workspace">
         <header className="admin-workspace-heading">
           <div className="admin-topbar-title"><span className="admin-breadcrumb">MCQPath <i>/</i> Admin</span><h1>{tabLabels[tab]}</h1></div>
-          <div className="admin-topbar-actions"><span className="admin-topbar-user"><span className="admin-avatar">{principal.name.slice(0, 1).toUpperCase()}</span><span><strong>{principal.name}</strong><small>{roleLabels[principal.role]}</small></span></span><button className="button button-light" type="button" onClick={() => void refresh()} disabled={loading}><span aria-hidden="true">↻</span> {loading ? "Refreshing…" : "Refresh"}</button></div>
+          <div className="admin-topbar-actions"><span className="admin-topbar-user"><span className="admin-avatar">{principal.name.slice(0, 1).toUpperCase()}</span><span><strong>{principal.name}</strong><small>{roleLabels[principal.role]}</small></span></span><a className="button button-light" href="/admin/password">Change password</a><button className="button button-light" type="button" onClick={() => void refresh()} disabled={loading}><span aria-hidden="true">↻</span> {loading ? "Refreshing…" : "Refresh"}</button></div>
         </header>
         <main className="admin-content-area">
           <div className="admin-section-intro"><p>{tab === "overview" ? "A clear view of your question bank and publishing workflow." : tab === "questions" ? "Create, review, and publish sourced multiple-choice questions." : tab === "categories" ? "Organise subjects and topics used across MCQs and papers." : tab === "papers" ? "Build and publish past papers from your verified MCQs." : "Manage staff access and content permissions."}</p></div>
@@ -125,9 +125,9 @@ export function AdminDashboard({ principal, capabilities }: { principal: AdminPr
           {loading && !subjects.length && !questions.length && !papers.length ? <div className="loading-panel">Loading admin records…</div> : null}
           {tab === "overview" && <OverviewPanel subjects={subjects} topics={topics} questions={questions} papers={papers} users={users} canManageCategories={capabilities.manageCategories} canManagePapers={capabilities.managePapers} canManageUsers={capabilities.manageUsers} onSelect={setTab} />}
           {tab === "categories" && capabilities.manageCategories && <CategoriesPanel subjects={subjects} topics={topics} canEdit={capabilities.manageCategories} canPublish={capabilities.publishContent} canDelete={capabilities.deleteContent} onSave={(body, method) => perform(() => sendAdmin("/api/admin/categories", method, body), "Category saved.")} onStatus={(kind, id, status) => perform(() => sendAdmin("/api/admin/categories", "PATCH", { kind, id, status }), `Category ${status}.`)} />}
-          {tab === "questions" && <QuestionsPanel topics={topics} papers={papers} canManagePapers={capabilities.managePapers} canPublish={capabilities.publishContent} canDelete={capabilities.deleteContent} initialPaperId={entryPaperId} onUpdated={refresh} />}
-          {tab === "papers" && capabilities.managePapers && <PapersPanel papers={papers} subjects={subjects} topics={topics} canEdit={capabilities.managePapers} canPublish={capabilities.publishContent} canDelete={capabilities.deleteContent} onSave={(body, method) => perform(() => sendAdmin("/api/admin/papers", method, body), "Past paper saved.")} onStatus={(id, status) => perform(() => sendAdmin("/api/admin/papers", "PATCH", { id, status }), `Past paper ${status}.`)} onReorder={(paperId, questionIds) => perform(() => sendAdmin("/api/admin/papers/reorder", "POST", { paperId, questionIds }), "Question order saved.")} onAddMcqs={(paperId) => { setEntryPaperId(paperId); setTab("questions"); }} />}
-          {tab === "team" && capabilities.manageUsers && <TeamPanel users={users} currentId={principal.id} isSuperAdmin={capabilities.manageUsers} onSave={(body, method) => perform(() => sendAdmin("/api/admin/users", method, body), "User account saved.")} />}
+          {tab === "questions" && <QuestionsPanel topics={topics} papers={papers} canManagePapers={capabilities.managePapers} canPublish={capabilities.publishContent} canDelete={capabilities.deleteContent} canCreateMcqs={capabilities.createMcqs} canReviewMcqs={capabilities.reviewMcqs} canEditOwnMcqs={capabilities.editOwnMcqs} canEditAnyMcqs={capabilities.editAnyMcqs} currentUserId={principal.id} initialPaperId={entryPaperId} onUpdated={refresh} />}
+          {tab === "papers" && capabilities.managePapers && <PapersPanel papers={papers} subjects={subjects} topics={topics} canEdit={capabilities.managePapers} canPublish={capabilities.publishContent} canDelete={capabilities.managePapers} onSave={(body, method) => perform(() => sendAdmin("/api/admin/papers", method, body), "Past paper saved.")} onStatus={(id, status) => perform(() => sendAdmin("/api/admin/papers", "PATCH", { id, status }), `Past paper ${status}.`)} onReorder={(paperId, questionIds) => perform(() => sendAdmin("/api/admin/papers/reorder", "POST", { paperId, questionIds }), "Question order saved.")} onAddMcqs={(paperId) => { setEntryPaperId(paperId); setTab("questions"); }} />}
+          {tab === "team" && capabilities.manageUsers && <TeamPanel users={users} currentId={principal.id} isSuperAdmin={principal.role === "super_admin"} onSave={(body, method) => perform(() => sendAdmin("/api/admin/users", method, body), "User account saved.")} />}
         </main>
       </div>
     </div>
@@ -136,13 +136,15 @@ export function AdminDashboard({ principal, capabilities }: { principal: AdminPr
 
 function OverviewPanel({ subjects, topics, questions, papers, users, canManageCategories, canManagePapers, canManageUsers, onSelect }: { subjects: SubjectRow[]; topics: TopicRow[]; questions: AdminQuestion[]; papers: AdminPaper[]; users: AdminUser[]; canManageCategories: boolean; canManagePapers: boolean; canManageUsers: boolean; onSelect: (tab: Tab) => void }) {
   const drafts = questions.filter((question) => question.status === "draft").length + papers.filter((paper) => paper.status === "draft").length;
+  const waiting = questions.filter((question) => question.status === "in_review");
+  const rejected = questions.filter((question) => question.status === "rejected");
   const stats: Array<{ title: string; value: number; hint: string; target: Tab }> = [];
   if (canManageCategories) stats.push({ title: "Subjects", value: subjects.length, hint: "categories", target: "categories" }, { title: "Topics", value: topics.length, hint: "subcategories", target: "categories" });
   stats.push({ title: "Questions", value: questions.length, hint: "MCQs in the bank", target: "questions" });
   if (canManagePapers) stats.push({ title: "Past papers", value: papers.length, hint: "exam sets", target: "papers" });
   return <div className="admin-content-stack">
     <div className="admin-metric-grid">{stats.map(({ title, value, hint, target }) => <button type="button" className="admin-metric-card" key={title} onClick={() => onSelect(target)}><span>{title}</span><strong>{value}</strong><small>{hint} <b>→</b></small></button>)}</div>
-    <section className="admin-panel"><div className="admin-panel-heading"><div><span className="eyebrow">REVIEW QUEUE</span><h3>Content that needs attention</h3></div><StatusBadge status="draft" /></div><p>{drafts ? `${drafts} draft question${drafts === 1 ? "" : "s or papers"} are waiting for review or publication.` : "No draft questions or papers are waiting right now."}</p><div className="admin-quick-links"><button type="button" className="button button-primary" onClick={() => onSelect("questions")}>Manage MCQs <span aria-hidden>→</span></button>{canManagePapers && <button type="button" className="button button-light" onClick={() => onSelect("papers")}>Add a past paper</button>}{canManageCategories && <button type="button" className="button button-light" onClick={() => onSelect("categories")}>Create a category</button>}</div></section>
+    <section className="admin-panel"><div className="admin-panel-heading"><div><span className="eyebrow">MY WORK</span><h3>Content that needs attention</h3></div><StatusBadge status="draft" /></div><p>{drafts} drafts · {waiting.length} waiting for review · {rejected.length} returned for changes.</p>{rejected.slice(0,5).map((item) => <p key={item.id}><strong>#{item.id}:</strong> {item.reviewNote || "No review note was provided."}</p>)}<div className="admin-quick-links"><button type="button" className="button button-primary" onClick={() => onSelect("questions")}>Manage MCQs <span aria-hidden>→</span></button>{canManagePapers && <button type="button" className="button button-light" onClick={() => onSelect("papers")}>Add a past paper</button>}{canManageCategories && <button type="button" className="button button-light" onClick={() => onSelect("categories")}>Create a category</button>}</div></section>
     {canManageUsers && <section className="admin-panel"><div className="admin-panel-heading"><div><span className="eyebrow">WORKSPACE ACCESS</span><h3>Team accounts</h3></div><button type="button" className="text-link" onClick={() => onSelect("team")}>Manage team →</button></div><p>{users.filter((user) => user.status === "active").length} active team account{users.filter((user) => user.status === "active").length === 1 ? "" : "s"}. Role permissions limit the MCQ bank, categories, and past-paper tools available to each account.</p></section>}
   </div>;
 }
@@ -198,8 +200,8 @@ function CategoriesPanel({ subjects, topics, canEdit, canPublish, canDelete, onS
   </div>;
 }
 
-function QuestionsPanel({ topics, papers, canManagePapers, canPublish, canDelete, initialPaperId, onUpdated }: { topics: TopicRow[]; papers: AdminPaper[]; canManagePapers: boolean; canPublish: boolean; canDelete: boolean; initialPaperId: number | null; onUpdated: () => Promise<void> }) {
-  return <AdminQuestionWorkspace topics={topics} papers={papers} canManagePapers={canManagePapers} canPublish={canPublish} canDelete={canDelete} initialPaperId={initialPaperId} onUpdated={onUpdated} />;
+function QuestionsPanel({ topics, papers, canManagePapers, canPublish, canDelete, canCreateMcqs, canReviewMcqs, canEditOwnMcqs, canEditAnyMcqs, currentUserId, initialPaperId, onUpdated }: { topics: TopicRow[]; papers: AdminPaper[]; canManagePapers: boolean; canPublish: boolean; canDelete: boolean; canCreateMcqs: boolean; canReviewMcqs: boolean; canEditOwnMcqs: boolean; canEditAnyMcqs: boolean; currentUserId: string; initialPaperId: number | null; onUpdated: () => Promise<void> }) {
+  return <AdminQuestionWorkspace topics={topics} papers={papers} canManagePapers={canManagePapers} canPublish={canPublish} canDelete={canDelete} canCreateMcqs={canCreateMcqs} canReviewMcqs={canReviewMcqs} canEditOwnMcqs={canEditOwnMcqs} canEditAnyMcqs={canEditAnyMcqs} currentUserId={currentUserId} initialPaperId={initialPaperId} onUpdated={onUpdated} />;
 }
 
 function PapersPanel({ papers, subjects, topics, canEdit, canPublish, canDelete, onSave, onStatus, onReorder, onAddMcqs }: { papers: AdminPaper[]; subjects: SubjectRow[]; topics: TopicRow[]; canEdit: boolean; canPublish: boolean; canDelete: boolean; onSave: (body: unknown, method: string) => Promise<string>; onStatus: (id: number, status: string) => Promise<string>; onReorder: (paperId: number, questionIds: number[]) => Promise<string>; onAddMcqs: (paperId: number) => void }) {
@@ -322,14 +324,14 @@ function PapersPanel({ papers, subjects, topics, canEdit, canPublish, canDelete,
 }
 
 function TeamPanel({ users, currentId, isSuperAdmin, onSave }: { users: AdminUser[]; currentId: string; isSuperAdmin: boolean; onSave: (body: unknown, method: string) => Promise<string> }) {
-  const [editing, setEditing] = useState<AdminUser | null>(null); const [name, setName] = useState(""); const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [role, setRole] = useState<"admin" | "editor" | "reviewer">("editor"); const [status, setStatus] = useState<"active" | "inactive">("active");
+  const [editing, setEditing] = useState<AdminUser | null>(null); const [name, setName] = useState(""); const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [role, setRole] = useState<"admin" | "data_entry" | "reviewer" | "publisher" | "super_admin">("data_entry"); const [status, setStatus] = useState<"active" | "inactive">("active");
   const [notice, setNotice] = useState(""); const [busy, setBusy] = useState(false);
-  function reset() { setEditing(null); setName(""); setEmail(""); setPassword(""); setRole("editor"); setStatus("active"); }
-  function choose(user: AdminUser) { setEditing(user); setName(user.name); setEmail(user.email); setPassword(""); setRole(user.role === "super_admin" ? "admin" : user.role); setStatus(user.status); }
+  function reset() { setEditing(null); setName(""); setEmail(""); setPassword(""); setRole("data_entry"); setStatus("active"); }
+  function choose(user: AdminUser) { setEditing(user); setName(user.name); setEmail(user.email); setPassword(""); setRole(user.role); setStatus(user.status); }
   async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setBusy(true); setNotice(""); const result = await onSave({ id: editing?.id, name, email, password, role, status }, editing ? "PATCH" : "POST"); setBusy(false); setNotice(result); if (result) reset(); }
   return <div className="admin-management-grid">
     <section className="admin-panel"><div className="admin-panel-heading"><div><span className="eyebrow">ACCESS CONTROL</span><h3>{editing ? "Edit team account" : "Invite a team member"}</h3></div></div>
-      <p className="admin-helper">MCQ Contributors manage MCQs only. Category & MCQ Managers also manage categories. Paper Managers can publish all content and build past papers. Only the Super Admin can archive content and manage team accounts.</p>
+      <p className="admin-helper">Data Entry creates MCQs and edits own drafts. Reviewers decide submitted MCQs. Publishers manage papers and publish approved content. Admins manage workspace operations; Super Admins also manage super admins and system settings.</p>
       <form className="admin-form" onSubmit={submit}>
         <label htmlFor="team-name">Full name</label><input id="team-name" value={name} onChange={(event) => setName(event.target.value)} minLength={2} maxLength={140} required />
         <label htmlFor="team-email">Email</label><input id="team-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} maxLength={190} required />
@@ -341,7 +343,7 @@ function TeamPanel({ users, currentId, isSuperAdmin, onSave }: { users: AdminUse
       </form>
     </section>
     <section className="admin-panel"><div className="admin-panel-heading"><div><span className="eyebrow">TEAM DIRECTORY</span><h3>{users.length} accounts</h3></div></div><p className="admin-helper">Your own account cannot be disabled or assigned a different role.</p>
-      <div className="admin-record-list">{users.map((user) => <article className="admin-record" key={user.id}><div><div className="admin-record-title"><strong>{user.name}</strong><StatusBadge status={user.status} /></div><small>{user.email} · {roleLabels[user.role]}{user.id === currentId ? " · you" : ""}</small></div><button type="button" className="button button-light" disabled={user.id === currentId} onClick={() => choose(user)}>Edit</button></article>)}{!users.length && <p className="admin-empty">No team accounts yet.</p>}</div>
+      <div className="admin-record-list">{users.map((user) => <article className="admin-record" key={user.id}><div><div className="admin-record-title"><strong>{user.name}</strong><StatusBadge status={user.status} /></div><small>{user.email} · {roleLabels[user.role]}{user.id === currentId ? " · you" : ""}</small><small>Last login: {user.last_login_at ? new Date(user.last_login_at).toLocaleString() : "Never"}</small></div><button type="button" className="button button-light" disabled={user.id === currentId} onClick={() => choose(user)}>Edit</button></article>)}{!users.length && <p className="admin-empty">No team accounts yet.</p>}</div>
     </section>
   </div>;
 }
