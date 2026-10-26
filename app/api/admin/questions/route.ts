@@ -32,7 +32,8 @@ function parseQuestion(body: Record<string, unknown> | null) {
   const paperIds = body && Object.hasOwn(body, "paperIds")
     ? Array.isArray(body.paperIds) ? [...new Set(body.paperIds.map(Number))] : null
     : undefined;
-  if (!Number.isInteger(topicId) || topicId < 1 || prompt.length < 8 || prompt.length > 1500 || explanation.length < 3 || explanation.length > 3000 || sourceNote.length < 4 || sourceNote.length > 500 || choices.length !== 4 || choices.some((choice) => choice.length < 1 || choice.length > 800) || !labels.includes(correctChoice as typeof labels[number]) || paperIds === null || (paperIds && (paperIds.length > 50 || paperIds.some((id) => !Number.isSafeInteger(id) || id < 1)))) return null;
+  const normalizedChoices = choices.map((choice) => choice.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase());
+  if (!Number.isInteger(topicId) || topicId < 1 || prompt.length < 8 || prompt.length > 1500 || explanation.length > 3000 || sourceNote.length < 4 || sourceNote.length > 500 || choices.length !== 4 || choices.some((choice) => choice.length < 1 || choice.length > 800) || new Set(normalizedChoices).size !== 4 || !labels.includes(correctChoice as typeof labels[number]) || paperIds === null || (paperIds && (paperIds.length > 50 || paperIds.some((id) => !Number.isSafeInteger(id) || id < 1)))) return null;
   return { topicId, prompt, explanation, sourceNote, choices, correctChoice, difficulty, paperIds };
 }
 
@@ -55,6 +56,10 @@ async function syncQuestionPapers(connection: import("mysql2/promise").PoolConne
   }
   for (const paperId of paperIds) {
     if (oldOrder.has(paperId)) continue;
+    const [papers] = await connection.execute<Array<RowDataPacket & { id: number; status: string }>>(
+      "SELECT id, status FROM papers WHERE id = ? FOR UPDATE", [paperId],
+    );
+    if (!papers[0] || papers[0].status === "archived") throw new Error("The selected paper is no longer active.");
     const [maxRows] = await connection.execute<Array<RowDataPacket & { max_order: number | null }>>(
       "SELECT MAX(question_order) AS max_order FROM paper_questions WHERE paper_id = ?", [paperId],
     );
@@ -63,15 +68,43 @@ async function syncQuestionPapers(connection: import("mysql2/promise").PoolConne
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const principal = await getAdminPrincipal();
   if (!principal || !hasPermission(principal, "content:view")) return NextResponse.json({ error: "Sign in with a content role." }, { status: 401 });
   if (!hasDatabase || !db) return noDatabase();
+  const params = new URL(request.url).searchParams;
+  const idsParam = params.get("ids");
+  const ids = idsParam ? [...new Set(idsParam.split(",").map(Number).filter((id) => Number.isSafeInteger(id) && id > 0))].slice(0, 500) : [];
+  const search = (params.get("search") ?? "").trim().slice(0, 160);
+  const topicId = Number(params.get("topicId"));
+  const status = params.get("status") ?? "all";
+  const page = Math.max(1, Math.min(100000, Number(params.get("page")) || 1));
+  const pageSize = Math.max(10, Math.min(100, Number(params.get("pageSize")) || (search || params.has("page") ? 25 : 500)));
+  const conditions: string[] = [];
+  const values: Array<string | number> = [];
+  if (idsParam) {
+    if (!ids.length) return NextResponse.json({ questions: [], total: 0, page, pageSize });
+    conditions.push(`q.id IN (${ids.map(() => "?").join(",")})`);
+    values.push(...ids);
+  }
+  if (search) {
+    conditions.push("(q.question_text LIKE ? OR q.source_note LIKE ? OR t.name LIKE ? OR s.name LIKE ?)");
+    const term = `%${search}%`;
+    values.push(term, term, term, term);
+  }
+  if (Number.isSafeInteger(topicId) && topicId > 0) { conditions.push("t.id = ?"); values.push(topicId); }
+  if (["draft", "published", "archived"].includes(status)) { conditions.push("q.status = ?"); values.push(status); }
+  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  const from = "FROM questions q JOIN topics t ON t.id = q.topic_id JOIN subjects s ON s.id = t.subject_id";
+  const [countRows] = await db.execute<Array<RowDataPacket & { total: number }>>(`SELECT COUNT(*) AS total ${from} ${where}`, values);
+  const total = Number(countRows[0]?.total ?? 0);
+  const offset = (page - 1) * pageSize;
   const [questions] = await db.execute<Array<RowDataPacket & { id: number; topic_id: number; topic_name: string; subject_name: string; prompt: string; explanation: string; source_note: string; correct_choice: string; difficulty: string; status: string; updated_at: string }>>(
     `SELECT q.id, q.topic_id, t.name AS topic_name, s.name AS subject_name,
             q.question_text AS prompt, q.explanation, q.source_note, q.correct_choice, q.difficulty, q.status, q.updated_at
-     FROM questions q JOIN topics t ON t.id = q.topic_id JOIN subjects s ON s.id = t.subject_id
-     ORDER BY q.updated_at DESC, q.id DESC LIMIT 500`,
+     ${from} ${where}
+     ORDER BY q.updated_at DESC, q.id DESC LIMIT ? OFFSET ?`,
+    [...values, pageSize, offset],
   );
   const questionIds = questions.map((question) => question.id);
   const [paperLinks] = questionIds.length
@@ -94,12 +127,13 @@ export async function GET() {
     list.push({ label: choice.label, text: choice.choice_text });
     choiceMap.set(choice.question_id, list);
   }
-  return NextResponse.json({ questions: questions.map((question) => ({
+  const orderedQuestions = idsParam ? [...questions].sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id)) : questions;
+  return NextResponse.json({ questions: orderedQuestions.map((question) => ({
     id: question.id, topicId: question.topic_id, topicName: question.topic_name, subjectName: question.subject_name,
     prompt: question.prompt, explanation: question.explanation, sourceNote: question.source_note, correctChoice: question.correct_choice,
     difficulty: question.difficulty, status: question.status, paperIds: paperIdMap.get(question.id) ?? [],
     choices: choiceMap.get(question.id) ?? [],
-  })) }, { headers: { "Cache-Control": "no-store" } });
+  })), total, page, pageSize }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(request: Request) {
@@ -112,6 +146,7 @@ export async function POST(request: Request) {
   if (parsed.paperIds !== undefined && !hasPermission(principal, "papers:manage")) return NextResponse.json({ error: "Your role cannot assign questions to past papers." }, { status: 403 });
   const status = requestedStatus(body?.status, principal);
   const connection = await db.getConnection();
+  let questionId = 0;
   try {
     await connection.beginTransaction();
     const paperIds = parsed.paperIds ?? [];
@@ -126,7 +161,7 @@ export async function POST(request: Request) {
          AND (? != 'published' OR (t.status = 'published' AND s.status = 'published'))`,
       [parsed.prompt, parsed.explanation, parsed.sourceNote, parsed.correctChoice, parsed.difficulty, status, parsed.topicId, status],
     );
-    const questionId = (insert as { insertId: number }).insertId;
+    questionId = (insert as { insertId: number }).insertId;
     if (!questionId) {
       await connection.rollback();
       return NextResponse.json({ error: "Choose a valid subject and topic. Published questions need a published topic." }, { status: 400 });
@@ -144,7 +179,7 @@ export async function POST(request: Request) {
     connection.release();
   }
   refreshQuestions();
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, id: questionId });
 }
 
 export async function PATCH(request: Request) {
@@ -205,7 +240,7 @@ export async function PATCH(request: Request) {
       await connection.rollback();
       return NextResponse.json({ error: "Choose a valid topic. Published questions need a published topic." }, { status: 400 });
     }
-    if (parsed.paperIds !== undefined && !await validatePaperIds(connection, parsed.paperIds)) {
+    if (parsed.paperIds && !await validatePaperIds(connection, parsed.paperIds)) {
       await connection.rollback();
       return NextResponse.json({ error: "Choose active past papers. Archived papers cannot receive MCQs." }, { status: 400 });
     }
@@ -217,7 +252,7 @@ export async function PATCH(request: Request) {
     for (let index = 0; index < labels.length; index++) {
       await connection.execute("INSERT INTO choices (question_id, label, choice_text) VALUES (?, ?, ?)", [id, labels[index], parsed.choices[index]]);
     }
-    if (parsed.paperIds !== undefined) await syncQuestionPapers(connection, id, parsed.paperIds);
+    if (parsed.paperIds) await syncQuestionPapers(connection, id, parsed.paperIds);
     await connection.commit();
   } catch (error) {
     await connection.rollback();

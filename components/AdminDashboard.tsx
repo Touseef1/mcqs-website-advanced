@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { AdminSignOutButton } from "@/components/AdminSignOutButton";
+import { AdminQuestionWorkspace } from "@/components/AdminQuestionWorkspace";
 import type { AdminCapabilities, AdminPrincipal, AdminRole } from "@/lib/admin-auth";
 
 type Status = "draft" | "published" | "archived";
@@ -14,8 +15,6 @@ type PickerQuestion = { id: number; topicId: number; topicName: string; subjectI
 type AdminUser = { id: string; name: string; email: string; role: AdminRole; status: "active" | "inactive" };
 type Tab = "overview" | "questions" | "categories" | "papers" | "team";
 
-type QuestionForm = { topicId: string; paperIds: number[]; prompt: string; choices: string[]; correctChoice: string; explanation: string; sourceNote: string; difficulty: "easy" | "medium" | "hard"; status: "draft" | "published" };
-const blankQuestion: QuestionForm = { topicId: "", paperIds: [], prompt: "", choices: ["", "", "", ""], correctChoice: "", explanation: "", sourceNote: "", difficulty: "medium", status: "draft" };
 const tabLabels: Record<Tab, string> = { overview: "Overview", questions: "MCQ bank", categories: "Categories", papers: "Past papers", team: "Team & roles" };
 const tabIcons: Record<Tab, string> = { overview: "▦", questions: "☷", categories: "◈", papers: "▤", team: "♙" };
 const roleLabels: Record<AdminRole, string> = { editor: "MCQ Contributor", reviewer: "Category & MCQ Manager", admin: "Paper Manager", super_admin: "Super Admin" };
@@ -47,6 +46,7 @@ function SuccessMessage({ children }: { children: string }) {
 export function AdminDashboard({ principal, capabilities }: { principal: AdminPrincipal; capabilities: AdminCapabilities }) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("overview");
+  const [entryPaperId, setEntryPaperId] = useState<number | null>(null);
   const [subjects, setSubjects] = useState<SubjectRow[]>([]);
   const [topics, setTopics] = useState<TopicRow[]>([]);
   const [questions, setQuestions] = useState<AdminQuestion[]>([]);
@@ -125,8 +125,8 @@ export function AdminDashboard({ principal, capabilities }: { principal: AdminPr
           {loading && !subjects.length && !questions.length && !papers.length ? <div className="loading-panel">Loading admin records…</div> : null}
           {tab === "overview" && <OverviewPanel subjects={subjects} topics={topics} questions={questions} papers={papers} users={users} canManageCategories={capabilities.manageCategories} canManagePapers={capabilities.managePapers} canManageUsers={capabilities.manageUsers} onSelect={setTab} />}
           {tab === "categories" && capabilities.manageCategories && <CategoriesPanel subjects={subjects} topics={topics} canEdit={capabilities.manageCategories} canPublish={capabilities.publishContent} canDelete={capabilities.deleteContent} onSave={(body, method) => perform(() => sendAdmin("/api/admin/categories", method, body), "Category saved.")} onStatus={(kind, id, status) => perform(() => sendAdmin("/api/admin/categories", "PATCH", { kind, id, status }), `Category ${status}.`)} />}
-          {tab === "questions" && <QuestionsPanel subjects={subjects} topics={topics} questions={questions} papers={papers} canEdit={capabilities.manageQuestions} canManageCategories={capabilities.manageCategories} canManagePapers={capabilities.managePapers} canPublish={capabilities.publishContent} canDelete={capabilities.deleteContent} onSave={(body, method) => perform(() => sendAdmin("/api/admin/questions", method, body), "Question saved.")} onArchive={(id) => perform(() => sendAdmin("/api/admin/questions", "DELETE", { id }), "Question archived.")} onStatus={(id, status) => perform(() => sendAdmin("/api/admin/questions", "PATCH", { id, status }), `Question ${status}.`)} />}
-          {tab === "papers" && capabilities.managePapers && <PapersPanel papers={papers} subjects={subjects} topics={topics} canEdit={capabilities.managePapers} canPublish={capabilities.publishContent} canDelete={capabilities.deleteContent} onSave={(body, method) => perform(() => sendAdmin("/api/admin/papers", method, body), "Past paper saved.")} onStatus={(id, status) => perform(() => sendAdmin("/api/admin/papers", "PATCH", { id, status }), `Past paper ${status}.`)} />}
+          {tab === "questions" && <QuestionsPanel topics={topics} papers={papers} canManagePapers={capabilities.managePapers} canPublish={capabilities.publishContent} canDelete={capabilities.deleteContent} initialPaperId={entryPaperId} onUpdated={refresh} />}
+          {tab === "papers" && capabilities.managePapers && <PapersPanel papers={papers} subjects={subjects} topics={topics} canEdit={capabilities.managePapers} canPublish={capabilities.publishContent} canDelete={capabilities.deleteContent} onSave={(body, method) => perform(() => sendAdmin("/api/admin/papers", method, body), "Past paper saved.")} onStatus={(id, status) => perform(() => sendAdmin("/api/admin/papers", "PATCH", { id, status }), `Past paper ${status}.`)} onReorder={(paperId, questionIds) => perform(() => sendAdmin("/api/admin/papers/reorder", "POST", { paperId, questionIds }), "Question order saved.")} onAddMcqs={(paperId) => { setEntryPaperId(paperId); setTab("questions"); }} />}
           {tab === "team" && capabilities.manageUsers && <TeamPanel users={users} currentId={principal.id} isSuperAdmin={capabilities.manageUsers} onSave={(body, method) => perform(() => sendAdmin("/api/admin/users", method, body), "User account saved.")} />}
         </main>
       </div>
@@ -198,52 +198,11 @@ function CategoriesPanel({ subjects, topics, canEdit, canPublish, canDelete, onS
   </div>;
 }
 
-function QuestionsPanel({ subjects, topics, questions, papers, canEdit, canManageCategories, canManagePapers, canPublish, canDelete, onSave, onArchive, onStatus }: { subjects: SubjectRow[]; topics: TopicRow[]; questions: AdminQuestion[]; papers: AdminPaper[]; canEdit: boolean; canManageCategories: boolean; canManagePapers: boolean; canPublish: boolean; canDelete: boolean; onSave: (body: unknown, method: string) => Promise<string>; onArchive: (id: number) => Promise<string>; onStatus: (id: number, status: string) => Promise<string> }) {
-  const [form, setForm] = useState<QuestionForm>(blankQuestion);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [filter, setFilter] = useState("");
-  const [paperSearch, setPaperSearch] = useState("");
-  const [notice, setNotice] = useState("");
-  const [busy, setBusy] = useState(false);
-  const activeTopics = topics.filter((topic) => topic.status !== "archived" && subjects.some((subject) => subject.id === topic.subject_id && subject.status !== "archived"));
-  const availablePapers = papers.filter((paper) => paper.status !== "archived");
-  const shownPapers = availablePapers.filter((paper) => `${paper.title} ${paper.examName} ${paper.year}`.toLowerCase().includes(paperSearch.toLowerCase()));
-  const shown = questions.filter((question) => `${question.prompt} ${question.topicName} ${question.subjectName} ${question.status}`.toLowerCase().includes(filter.toLowerCase()));
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setBusy(true); setNotice("");
-    const result = await onSave({ ...form, paperIds: canManagePapers ? form.paperIds : undefined, id: editingId, topicId: Number(form.topicId) }, editingId ? "PATCH" : "POST");
-    setBusy(false); setNotice(result); if (result) { setForm(blankQuestion); setEditingId(null); }
-  }
-  function editQuestion(question: AdminQuestion) {
-    setEditingId(question.id);
-    setForm({ topicId: String(question.topicId), paperIds: question.paperIds, prompt: question.prompt, choices: ["A", "B", "C", "D"].map((label) => question.choices.find((choice) => choice.label === label)?.text ?? ""), correctChoice: question.correctChoice, explanation: question.explanation, sourceNote: question.sourceNote, difficulty: question.difficulty, status: question.status === "published" ? "published" : "draft" });
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-
-  return <div className="admin-management-grid">
-    {canEdit && <section className="admin-panel"><div className="admin-panel-heading"><div><span className="eyebrow">QUESTION EDITOR</span><h3>{editingId ? "Edit MCQ" : "Add a multiple-choice question"}</h3></div></div>
-      <form className="admin-form" onSubmit={submit}>
-        <label htmlFor="question-topic">Category · topic</label><select id="question-topic" value={form.topicId} onChange={(event) => setForm({ ...form, topicId: event.target.value })} required><option value="">Select a category / topic</option>{activeTopics.map((topic) => <option key={topic.id} value={topic.id}>{topic.subject_name} · {topic.name}</option>)}</select>
-        {canManagePapers && <fieldset className="question-paper-assign"><legend>Past papers <span>(optional · select one or more)</span></legend><p>Link this MCQ directly to existing papers. The same MCQ can be included in multiple papers.</p>{availablePapers.length > 0 && <input className="admin-filter" aria-label="Find a past paper" value={paperSearch} onChange={(event) => setPaperSearch(event.target.value)} placeholder="Find paper by title, exam, or year…" />}<div className="question-paper-options">{shownPapers.map((paper) => <label key={paper.id}><input type="checkbox" checked={form.paperIds.includes(paper.id)} onChange={(event) => setForm({ ...form, paperIds: event.target.checked ? [...new Set([...form.paperIds, paper.id])] : form.paperIds.filter((id) => id !== paper.id) })} /><span>{paper.title}<small>{paper.examName} · {paper.year} · {paper.status}</small></span></label>)}{!availablePapers.length && <small>Create a past paper first in the Past papers section.</small>}{availablePapers.length > 0 && !shownPapers.length && <small>No past papers match this search.</small>}</div></fieldset>}
-        <label htmlFor="question-prompt">Question text</label><textarea id="question-prompt" value={form.prompt} onChange={(event) => setForm({ ...form, prompt: event.target.value })} rows={3} minLength={8} maxLength={1500} required />
-        <div className="admin-choice-grid">{form.choices.map((choice, index) => <div className="admin-choice-field" key={index}><label htmlFor={`question-choice-${index}`}>Option {String.fromCharCode(65 + index)}</label><input id={`question-choice-${index}`} value={choice} onChange={(event) => setForm({ ...form, choices: form.choices.map((item, i) => i === index ? event.target.value : item) })} maxLength={800} required /></div>)}</div>
-        <div className="admin-form-two-col"><div><label htmlFor="question-answer">Correct answer</label><select id="question-answer" value={form.correctChoice} onChange={(event) => setForm({ ...form, correctChoice: event.target.value })} required><option value="">Select option</option>{["A", "B", "C", "D"].map((choice) => <option key={choice}>{choice}</option>)}</select></div><div><label htmlFor="question-difficulty">Difficulty</label><select id="question-difficulty" value={form.difficulty} onChange={(event) => setForm({ ...form, difficulty: event.target.value as QuestionForm["difficulty"] })}><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option></select></div></div>
-        <label htmlFor="question-explanation">Answer explanation</label><textarea id="question-explanation" value={form.explanation} onChange={(event) => setForm({ ...form, explanation: event.target.value })} rows={3} minLength={3} maxLength={3000} required />
-        <label htmlFor="question-source">Source / exam reference</label><input id="question-source" value={form.sourceNote} onChange={(event) => setForm({ ...form, sourceNote: event.target.value })} minLength={4} maxLength={500} placeholder="e.g. PPSC Junior Clerk, 2024, Paper I, Question 17" required /><p className="admin-helper">Add the exam, year, and paper or a reliable source. MCQs without a source cannot be published.</p>
-        <label htmlFor="question-status">Publishing status</label><select id="question-status" value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value as QuestionForm["status"] })}><option value="draft">Save as draft</option>{canPublish && <option value="published">Publish now</option>}</select>
-        <SuccessMessage>{notice}</SuccessMessage><div className="admin-inline-actions"><button className="button button-primary" type="submit" disabled={busy || !activeTopics.length}>{busy ? "Saving…" : editingId ? "Save MCQ" : "Add MCQ"}</button>{editingId && <button type="button" className="button button-light" onClick={() => { setEditingId(null); setForm(blankQuestion); }}>Cancel edit</button>}</div>
-        {!activeTopics.length && <p className="form-hint">{canManageCategories ? "Create a subject and topic first." : "Ask a Category & MCQ Manager to add a subject and topic before entering MCQs."}</p>}{!canPublish && <p className="form-hint">Your role can prepare MCQs as drafts. A Paper Manager or Super Admin can publish them.</p>}
-      </form>
-    </section>}
-    <section className="admin-panel"><div className="admin-panel-heading"><div><span className="eyebrow">MCQ BANK</span><h3>{questions.length} questions</h3></div><StatusBadge status="draft" /></div>
-      <input className="admin-filter" aria-label="Search MCQ bank" value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Search by question, topic, or status" />
-      <div className="admin-record-list">{shown.map((question) => <article className="admin-record" key={question.id}><div><div className="admin-record-title"><strong>{question.prompt}</strong><StatusBadge status={question.status} /></div><small>{question.subjectName} · {question.topicName} · {question.difficulty}</small><p>{question.choices.map((choice) => `${choice.label}. ${choice.text}`).join("  ·  ")}</p><small>Correct: {question.correctChoice} · {question.explanation}</small><small>Source: {question.sourceNote || "Add a source before publishing."}</small>{canManagePapers && question.paperIds.length > 0 && <small>Past papers: {question.paperIds.map((id) => papers.find((paper) => paper.id === id)?.title).filter(Boolean).join(" · ")}</small>}<div className="admin-inline-actions">{canEdit && (question.status !== "published" || canPublish) && <button type="button" className="button button-light" onClick={() => editQuestion(question)}>Edit</button>}{canPublish && question.status !== "published" && <button type="button" className="button button-primary" onClick={() => void onStatus(question.id, "published")}>Publish</button>}{canDelete && question.status !== "archived" && <button type="button" className="button button-light" onClick={() => void onArchive(question.id)}>Archive</button>}</div></div></article>)}{!shown.length && <p className="admin-empty">No questions match this search.</p>}</div>
-    </section>
-  </div>;
+function QuestionsPanel({ topics, papers, canManagePapers, canPublish, canDelete, initialPaperId, onUpdated }: { topics: TopicRow[]; papers: AdminPaper[]; canManagePapers: boolean; canPublish: boolean; canDelete: boolean; initialPaperId: number | null; onUpdated: () => Promise<void> }) {
+  return <AdminQuestionWorkspace topics={topics} papers={papers} canManagePapers={canManagePapers} canPublish={canPublish} canDelete={canDelete} initialPaperId={initialPaperId} onUpdated={onUpdated} />;
 }
 
-function PapersPanel({ papers, subjects, topics, canEdit, canPublish, canDelete, onSave, onStatus }: { papers: AdminPaper[]; subjects: SubjectRow[]; topics: TopicRow[]; canEdit: boolean; canPublish: boolean; canDelete: boolean; onSave: (body: unknown, method: string) => Promise<string>; onStatus: (id: number, status: string) => Promise<string> }) {
+function PapersPanel({ papers, subjects, topics, canEdit, canPublish, canDelete, onSave, onStatus, onReorder, onAddMcqs }: { papers: AdminPaper[]; subjects: SubjectRow[]; topics: TopicRow[]; canEdit: boolean; canPublish: boolean; canDelete: boolean; onSave: (body: unknown, method: string) => Promise<string>; onStatus: (id: number, status: string) => Promise<string>; onReorder: (paperId: number, questionIds: number[]) => Promise<string>; onAddMcqs: (paperId: number) => void }) {
   const [editing, setEditing] = useState<AdminPaper | null>(null);
   const [examName, setExamName] = useState(""); const [title, setTitle] = useState(""); const [slug, setSlug] = useState(""); const [year, setYear] = useState(String(new Date().getFullYear()));
   const [description, setDescription] = useState(""); const [status, setStatus] = useState<"draft" | "published">("draft");
@@ -251,6 +210,7 @@ function PapersPanel({ papers, subjects, topics, canEdit, canPublish, canDelete,
   const [search, setSearch] = useState(""); const [subjectId, setSubjectId] = useState(""); const [topicId, setTopicId] = useState(""); const [questionStatus, setQuestionStatus] = useState("published");
   const [page, setPage] = useState(1); const [pageSize, setPageSize] = useState(25); const [results, setResults] = useState<PickerQuestion[]>([]); const [total, setTotal] = useState(0);
   const [pickerLoading, setPickerLoading] = useState(true); const [pickerError, setPickerError] = useState(""); const [filter, setFilter] = useState(""); const [notice, setNotice] = useState(""); const [busy, setBusy] = useState(false);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
   const questionIds = selectedQuestions.map((question) => question.id);
   const selectedIdSet = new Set(questionIds);
   const shown = papers.filter((paper) => `${paper.title} ${paper.examName} ${paper.year} ${paper.status}`.toLowerCase().includes(filter.toLowerCase()));
@@ -305,7 +265,17 @@ function PapersPanel({ papers, subjects, topics, canEdit, canPublish, canDelete,
   function moveQuestion(index: number, offset: number) {
     const destination = index + offset;
     if (destination < 0 || destination >= selectedQuestions.length) return;
-    setSelectedQuestions((current) => { const updated = [...current]; [updated[index], updated[destination]] = [updated[destination], updated[index]]; return updated; });
+    const updated = [...selectedQuestions]; [updated[index], updated[destination]] = [updated[destination], updated[index]];
+    setSelectedQuestions(updated);
+    if (editing) void onReorder(editing.id, updated.map((question) => question.id));
+  }
+  function dropQuestion(index: number) {
+    if (dragIndex === null || dragIndex === index) { setDragIndex(null); return; }
+    const updated = [...selectedQuestions];
+    const [moved] = updated.splice(dragIndex, 1);
+    updated.splice(index, 0, moved);
+    setSelectedQuestions(updated); setDragIndex(null);
+    if (editing) void onReorder(editing.id, updated.map((question) => question.id));
   }
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setNotice("");
@@ -337,7 +307,7 @@ function PapersPanel({ papers, subjects, topics, canEdit, canPublish, canDelete,
           {pickerError && <ErrorMessage>{pickerError}</ErrorMessage>}
           <div className="paper-picker-results">{results.map((question) => <label className={`paper-picker-result ${question.status === "archived" ? "is-muted" : ""}`} key={question.id}><input type="checkbox" disabled={question.status === "archived" && !selectedIdSet.has(question.id)} checked={selectedIdSet.has(question.id)} onChange={(event) => toggleQuestion(question, event.target.checked)} /><span className="paper-picker-result-copy"><strong>{question.prompt}</strong><small>{question.subjectName} · {question.topicName} · {question.difficulty}</small><small>Source: {question.sourceNote || "Source reference required"}</small></span><StatusBadge status={question.status} /></label>)}{!pickerLoading && !results.length && <p className="admin-empty">No MCQs match these filters.</p>}</div>
           <div className="paper-picker-pagination"><button type="button" className="button button-light" disabled={page <= 1 || pickerLoading} onClick={() => setPage((current) => Math.max(1, current - 1))}>← Previous</button><span>Page {page} / {totalPages}</span><button type="button" className="button button-light" disabled={page >= totalPages || pickerLoading} onClick={() => setPage((current) => Math.min(totalPages, current + 1))}>Next →</button></div>
-          <section className="paper-selected-list"><div className="paper-selected-heading"><strong>Paper order</strong><span>Use arrows to arrange the final question order.</span></div>{selectedQuestions.map((question, index) => <article key={question.id}><b>{String(index + 1).padStart(2, "0")}</b><span>{question.prompt}<small>{question.subjectName} · {question.topicName} · {question.sourceNote || "Source required"}</small></span><StatusBadge status={question.status} /><div className="paper-order-actions"><button type="button" aria-label={`Move question ${index + 1} up`} title="Move up" disabled={index === 0} onClick={() => moveQuestion(index, -1)}>↑</button><button type="button" aria-label={`Move question ${index + 1} down`} title="Move down" disabled={index === selectedQuestions.length - 1} onClick={() => moveQuestion(index, 1)}>↓</button><button type="button" aria-label={`Remove question ${index + 1}`} title="Remove" onClick={() => toggleQuestion(question, false)}>×</button></div></article>)}{!selectedQuestions.length && <p className="admin-empty">Search for an MCQ above, then add it to this paper.</p>}</section>
+          <section className="paper-selected-list"><div className="paper-selected-heading"><strong>Paper order</strong><span>Drag a question or use the arrows to reorder.</span></div>{selectedQuestions.map((question, index) => <article key={question.id} draggable onDragStart={() => setDragIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => dropQuestion(index)} className={dragIndex === index ? "is-dragging" : ""}><button type="button" className="paper-drag-handle" aria-label={`Drag question ${index + 1}`} title="Drag to reorder">⠿</button><b>{String(index + 1).padStart(2, "0")}</b><span>{question.prompt}<small>{question.subjectName} · {question.topicName} · {question.sourceNote || "Source required"}</small></span><StatusBadge status={question.status} /><div className="paper-order-actions"><button type="button" aria-label={`Move question ${index + 1} up`} title="Move up" disabled={index === 0} onClick={() => moveQuestion(index, -1)}>↑</button><button type="button" aria-label={`Move question ${index + 1} down`} title="Move down" disabled={index === selectedQuestions.length - 1} onClick={() => moveQuestion(index, 1)}>↓</button><button type="button" aria-label={`Remove question ${index + 1}`} title="Remove" onClick={() => toggleQuestion(question, false)}>×</button></div></article>)}{!selectedQuestions.length && <p className="admin-empty">Search for an MCQ above, then add it to this paper.</p>}</section>
         </div>
 
         <SuccessMessage>{notice}</SuccessMessage><div className="admin-inline-actions"><button className="button button-primary" type="submit" disabled={busy || !selectedQuestions.length}>{busy ? "Saving…" : editing ? "Save paper" : "Create paper"}</button>{editing && <button className="button button-light" type="button" onClick={reset}>Cancel edit</button>}</div>
@@ -346,7 +316,7 @@ function PapersPanel({ papers, subjects, topics, canEdit, canPublish, canDelete,
     </section>}
     <section className="admin-panel"><div className="admin-panel-heading"><div><span className="eyebrow">PAPER LIBRARY</span><h3>{papers.length} past papers</h3></div></div>
       <input className="admin-filter" aria-label="Search past papers" value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Search by title, exam, year, or status" />
-      <div className="admin-record-list">{shown.map((paper) => <article className="admin-record" key={paper.id}><div><div className="admin-record-title"><strong>{paper.title}</strong><StatusBadge status={paper.status} /></div><small>{paper.examName} · {paper.year} · {paper.questionCount} MCQs</small><p>{paper.description}</p><div className="admin-inline-actions">{canEdit && <button type="button" className="button button-light" onClick={() => void selectPaper(paper)}>Edit</button>}{canPublish && paper.status !== "published" && <button type="button" className="button button-primary" onClick={() => void onStatus(paper.id, "published")}>Publish</button>}{canDelete && paper.status !== "archived" && <button type="button" className="button button-light" onClick={() => void onStatus(paper.id, "archived")}>Archive</button>}</div></div></article>)}{!shown.length && <p className="admin-empty">No past papers match this search.</p>}</div>
+      <div className="admin-record-list">{shown.map((paper) => <article className="admin-record" key={paper.id}><div><div className="admin-record-title"><strong>{paper.title}</strong><StatusBadge status={paper.status} /></div><small>{paper.examName} · {paper.year} · {paper.questionCount} MCQs</small><p>{paper.description}</p><div className="admin-inline-actions">{canEdit && paper.status !== "archived" && <button type="button" className="button button-primary" onClick={() => onAddMcqs(paper.id)}>Add MCQs to this paper</button>}{canEdit && <button type="button" className="button button-light" onClick={() => void selectPaper(paper)}>Edit</button>}{canPublish && paper.status !== "published" && <button type="button" className="button button-primary" onClick={() => void onStatus(paper.id, "published")}>Publish</button>}{canDelete && paper.status !== "archived" && <button type="button" className="button button-light" onClick={() => void onStatus(paper.id, "archived")}>Archive</button>}</div></div></article>)}{!shown.length && <p className="admin-empty">No past papers match this search.</p>}</div>
     </section>
   </div>;
 }
