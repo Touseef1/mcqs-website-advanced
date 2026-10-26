@@ -22,7 +22,7 @@ async function AdminPanel() {
       ) : principal.mustChangePassword ? (
         <AdminPasswordChange required />
       ) : !hasDatabase ? (
-        <section className="admin-card"><div className="admin-brand"><span className="admin-brand-mark">M</span><span><strong>MCQPath</strong><small>ADMIN WORKSPACE</small></span></div><h2>Connect MySQL to manage content</h2><p>Set database values in <code>.env.local</code>, then apply migrations <code>001</code>, <code>002</code>, <code>003</code>, <code>005</code>, and <code>006</code>.</p></section>
+        <section className="admin-card"><div className="admin-brand"><span className="admin-brand-mark">M</span><span><strong>MCQPath</strong><small>ADMIN WORKSPACE</small></span></div><h2>Connect MySQL to manage content</h2><p>Set database values in <code>.env.local</code>, then apply migrations 001–007 in the order in <code>docs/MIGRATIONS.md</code>.</p></section>
       ) : (
         <AdminDashboard principal={principal} capabilities={getAdminCapabilities(principal)} />
       )}

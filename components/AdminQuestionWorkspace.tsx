@@ -1,17 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from "react";
+import Image from "next/image";
 
 type Status = "draft" | "in_review" | "approved" | "published" | "rejected" | "archived";
 type Topic = { id: number; subject_id: number; subject_name: string; name: string; status: Status };
-type Paper = { id: number; examId: number; examName: string; title: string; slug: string; year: number; type: "Past paper"; description: string; status: Status; questionCount: number; questionIds: number[] };
-type Choice = { label: string; text: string };
-type Question = { id: number; topicId: number; topicName: string; subjectName: string; prompt: string; explanation: string; sourceNote: string; correctChoice: string; difficulty: "easy" | "medium" | "hard"; status: Status; reviewNote?: string | null; createdBy?: number | string; paperIds: number[]; choices: Choice[] };
-type DraftQuestion = { prompt: string; choices: string[]; correctChoice: string; explanation: string };
+type Paper = { id: number; examId: number; examName: string; title: string; slug: string; year: number; type: "Past paper" | "Model paper" | "Mock test"; description: string; status: Status; questionCount: number; questionIds: number[] };
+type Choice = { label: string; text: string; imageUrl?: string | null };
+type Question = { id: number; topicId: number; topicName: string; subjectName: string; prompt: string; questionImageUrl?: string | null; explanation: string; sourceNote: string; correctChoice: string; difficulty: "easy" | "medium" | "hard"; status: Status; reviewNote?: string | null; createdBy?: number | string; paperIds: number[]; choices: Choice[] };
+type DraftQuestion = { prompt: string; choices: string[]; correctChoice: string; explanation: string; questionImageUrl?: string | null; choiceImageUrls?: Array<string | null> };
 type PreviewRow = DraftQuestion & { rowNumber: number; errors: string[] };
 type Props = { topics: Topic[]; papers: Paper[]; canManagePapers: boolean; canPublish: boolean; canDelete: boolean; canCreateMcqs: boolean; canReviewMcqs: boolean; canEditOwnMcqs: boolean; canEditAnyMcqs: boolean; currentUserId: string; initialPaperId: number | null; onUpdated: () => Promise<void> };
 
-const emptyDraft: DraftQuestion = { prompt: "", choices: ["", "", "", ""], correctChoice: "", explanation: "" };
+const emptyDraft: DraftQuestion = { prompt: "", choices: ["", "", "", ""], correctChoice: "", explanation: "", questionImageUrl: null, choiceImageUrls: [null, null, null, null] };
 const questionLabels = ["A", "B", "C", "D"] as const;
 const contextStorageKey = "mcqpath:question-entry-context";
 const sessionIdsKey = "mcqpath:question-entry-session-ids";
@@ -163,9 +164,10 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canPub
   const [editingStatus, setEditingStatus] = useState<Status>("draft");
   const [editingPaperIds, setEditingPaperIds] = useState<number[]>([]);
   const [busy, setBusy] = useState(false);
+  const [imageBusy, setImageBusy] = useState(false);
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
-  const [similar, setSimilar] = useState<Array<{ id: number; prompt: string; similarity: number }>>([]);
+  const [similar, setSimilar] = useState<Array<{ id: number; prompt: string; similarity: number; exact?: boolean }>>([]);
   const [sessionQuestions, setSessionQuestions] = useState<Question[]>([]);
   const [sessionCount, setSessionCount] = useState(0);
   const [bankQuestions, setBankQuestions] = useState<Question[]>([]);
@@ -266,7 +268,7 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canPub
     const controller = new AbortController();
     const timeout = window.setTimeout(async () => {
       try {
-        const result = await adminRequest<{ similar: Array<{ id: number; prompt: string; similarity: number }> }>("/api/admin/questions/similar", "POST", { topicId: Number(topicId), questionId: editingId, prompt: draft.prompt });
+        const result = await adminRequest<{ similar: Array<{ id: number; prompt: string; similarity: number; exact?: boolean }> }>("/api/admin/questions/similar", "POST", { topicId: Number(topicId), questionId: editingId, prompt: draft.prompt });
         if (!controller.signal.aborted) setSimilar(result.similar ?? []);
       } catch { if (!controller.signal.aborted) setSimilar([]); }
     }, 500);
@@ -287,6 +289,20 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canPub
 
   function selectedPaper() { return paperOptions.find((paper) => String(paper.id) === paperId); }
 
+  async function uploadImage(file: File | undefined, target: "question" | number) {
+    if (!file) return;
+    setImageBusy(true); setError("");
+    try {
+      const form = new FormData(); form.set("image", file);
+      const response = await fetch("/api/admin/question-images", { method: "POST", body: form, cache: "no-store" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "The image could not be uploaded.");
+      if (target === "question") setDraft((current) => ({ ...current, questionImageUrl: data.url }));
+      else setDraft((current) => ({ ...current, choiceImageUrls: (current.choiceImageUrls ?? [null, null, null, null]).map((url, index) => index === target ? data.url : url) }));
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "The image could not be uploaded."); }
+    finally { setImageBusy(false); }
+  }
+
   async function saveQuestion(closeAfterSave: boolean) {
     setError("");
     const validation = validateDraft(draft);
@@ -296,7 +312,7 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canPub
     setBusy(true);
     try {
       const paperIds = canUsePapers ? (editingId ? editingPaperIds : paperId ? [Number(paperId)] : []) : undefined;
-      const body = { id: editingId ?? undefined, topicId: Number(topicId), paperIds, prompt: draft.prompt.trim(), choices: draft.choices.map((choice) => choice.trim()), correctChoice: draft.correctChoice, explanation: draft.explanation.trim(), sourceNote: sourceNote.trim(), difficulty };
+      const body = { id: editingId ?? undefined, topicId: Number(topicId), paperIds, prompt: draft.prompt.trim(), questionImageUrl: draft.questionImageUrl ?? null, choiceImageUrls: draft.choiceImageUrls ?? [null, null, null, null], choices: draft.choices.map((choice) => choice.trim()), correctChoice: draft.correctChoice, explanation: draft.explanation.trim(), sourceNote: sourceNote.trim(), difficulty };
       const result = await adminRequest<{ id?: number }>("/api/admin/questions", editingId ? "PATCH" : "POST", body);
       const id = editingId ?? Number(result.id);
       const topic = topics.find((item) => item.id === Number(topicId));
@@ -307,13 +323,14 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canPub
         topicName: topic?.name ?? "Topic",
         subjectName: topic?.subject_name ?? "Subject",
         prompt: draft.prompt.trim(),
+        questionImageUrl: draft.questionImageUrl ?? null,
         explanation: draft.explanation.trim(),
         sourceNote: sourceNote.trim(),
         correctChoice: draft.correctChoice,
         difficulty,
         status: editingId ? editingStatus : "draft",
         paperIds: paperIds ?? existing?.paperIds ?? [],
-        choices: draft.choices.map((text, index) => ({ label: questionLabels[index], text: text.trim() })),
+        choices: draft.choices.map((text, index) => ({ label: questionLabels[index], text: text.trim(), imageUrl: draft.choiceImageUrls?.[index] ?? null })),
       };
       const updatedSession = existing
         ? sessionQuestions.map((question) => question.id === id ? item : question)
@@ -343,7 +360,7 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canPub
   }
 
   function editQuestion(question: Question) {
-    setDraft({ prompt: question.prompt, choices: questionLabels.map((label) => question.choices.find((choice) => choice.label === label)?.text ?? ""), correctChoice: question.correctChoice, explanation: question.explanation ?? "" });
+    setDraft({ prompt: question.prompt, questionImageUrl: question.questionImageUrl ?? null, choices: questionLabels.map((label) => question.choices.find((choice) => choice.label === label)?.text ?? ""), choiceImageUrls: questionLabels.map((label) => question.choices.find((choice) => choice.label === label)?.imageUrl ?? null), correctChoice: question.correctChoice, explanation: question.explanation ?? "" });
     setTopicId(String(question.topicId));
     setSourceNote(question.sourceNote);
     setDifficulty(question.difficulty);
@@ -484,11 +501,12 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canPub
         <form className="admin-form mcq-entry-form" onSubmit={(event) => { event.preventDefault(); void saveQuestion(false); }} onKeyDown={onQuestionKeyDown}>
           <label htmlFor="fast-mcq-question">Question text</label>
           <textarea ref={questionRef} id="fast-mcq-question" value={draft.prompt} onChange={(event) => setDraft({ ...draft, prompt: event.target.value })} rows={3} minLength={8} maxLength={1500} required placeholder="Enter the question" />
-          {similar.length > 0 && <aside className="mcq-similar-warning" role="status"><strong>Possible similar MCQ in this topic</strong>{similar.map((item) => <small key={item.id}>#{item.id} · {item.similarity}% similar · {item.prompt}</small>)}<small>This is only a warning; you can still save the question.</small></aside>}
-          <div className="mcq-option-grid">{draft.choices.map((choice, index) => <div className="mcq-option-row" key={questionLabels[index]}><label className="mcq-correct-radio" htmlFor={`fast-mcq-correct-${index}`} title="Mark as correct"><input id={`fast-mcq-correct-${index}`} type="radio" name="fast-mcq-correct" value={questionLabels[index]} checked={draft.correctChoice === questionLabels[index]} onChange={() => setDraft({ ...draft, correctChoice: questionLabels[index] })} aria-label={`Option ${questionLabels[index]} is correct`} /></label><div><label htmlFor={`fast-mcq-option-${index}`}>Option {questionLabels[index]}{draft.correctChoice === questionLabels[index] && <b className="mcq-correct-label">Correct</b>}</label><input id={`fast-mcq-option-${index}`} value={choice} onChange={(event) => setDraft({ ...draft, choices: draft.choices.map((item, choiceIndex) => choiceIndex === index ? event.target.value : item) })} maxLength={800} required /></div></div>)}</div>
+          <label htmlFor="fast-mcq-question-image">Question image <span className="mcq-optional">optional · PNG/JPEG/WebP · max 5 MB</span></label><input id="fast-mcq-question-image" type="file" accept="image/png,image/jpeg,image/webp" disabled={imageBusy} onChange={(event) => void uploadImage(event.target.files?.[0], "question")} />{draft.questionImageUrl && <div><Image src={draft.questionImageUrl} alt="Question attachment preview" width={160} height={160} unoptimized /><button type="button" className="text-link" onClick={() => setDraft({ ...draft, questionImageUrl: null })}>Remove image</button></div>}
+          {similar.length > 0 && <aside className="mcq-similar-warning" role="status"><strong>{similar.some((item) => item.exact) ? "Duplicate question found after text normalization" : "Possible similar MCQ in this topic"}</strong>{similar.map((item) => <small key={item.id}>#{item.id} · {item.exact ? "normalized text match" : `${item.similarity}% similar`} · {item.prompt}</small>)}<small>This is only a warning; you can still save the question.</small></aside>}
+          <div className="mcq-option-grid">{draft.choices.map((choice, index) => <div className="mcq-option-row" key={questionLabels[index]}><label className="mcq-correct-radio" htmlFor={`fast-mcq-correct-${index}`} title="Mark as correct"><input id={`fast-mcq-correct-${index}`} type="radio" name="fast-mcq-correct" value={questionLabels[index]} checked={draft.correctChoice === questionLabels[index]} onChange={() => setDraft({ ...draft, correctChoice: questionLabels[index] })} aria-label={`Option ${questionLabels[index]} is correct`} /></label><div><label htmlFor={`fast-mcq-option-${index}`}>Option {questionLabels[index]}{draft.correctChoice === questionLabels[index] && <b className="mcq-correct-label">Correct</b>}</label><input id={`fast-mcq-option-${index}`} value={choice} onChange={(event) => setDraft({ ...draft, choices: draft.choices.map((item, choiceIndex) => choiceIndex === index ? event.target.value : item) })} maxLength={800} required /><label htmlFor={`fast-mcq-option-image-${index}`}>Option {questionLabels[index]} image <span className="mcq-optional">optional</span></label><input id={`fast-mcq-option-image-${index}`} type="file" accept="image/png,image/jpeg,image/webp" disabled={imageBusy} onChange={(event) => void uploadImage(event.target.files?.[0], index)} />{draft.choiceImageUrls?.[index] && <div><Image src={draft.choiceImageUrls[index] ?? ""} alt={`Option ${questionLabels[index]} attachment preview`} width={120} height={120} unoptimized /><button type="button" className="text-link" onClick={() => setDraft({ ...draft, choiceImageUrls: (draft.choiceImageUrls ?? [null, null, null, null]).map((url, choiceIndex) => choiceIndex === index ? null : url) })}>Remove image</button></div>}</div></div>)}</div>
           <label htmlFor="fast-mcq-explanation">Explanation <span className="mcq-optional">optional</span></label>
           <textarea id="fast-mcq-explanation" value={draft.explanation} onChange={(event) => setDraft({ ...draft, explanation: event.target.value })} rows={2} maxLength={3000} placeholder="Explain the answer if useful" />
-          <div className="admin-inline-actions"><button className="button button-primary" type="submit" disabled={busy}>{busy ? "Saving…" : "Save & Add Next"}</button><button className="button button-light" type="button" disabled={busy} onClick={() => void saveQuestion(true)}>Save & Close</button>{editingId && <button className="button button-light" type="button" disabled={busy} onClick={() => { setEditingId(null); setEditingPaperIds([]); setDraft(emptyDraft); }}>Cancel edit</button>}</div>
+          <div className="admin-inline-actions"><button className="button button-primary" type="submit" disabled={busy || imageBusy}>{busy ? "Saving…" : "Save & Add Next"}</button><button className="button button-light" type="button" disabled={busy || imageBusy} onClick={() => void saveQuestion(true)}>Save & Close</button>{editingId && <button className="button button-light" type="button" disabled={busy || imageBusy} onClick={() => { setEditingId(null); setEditingPaperIds([]); setDraft(emptyDraft); }}>Cancel edit</button>}</div>
           {canCreateMcqs && <p className="form-hint">New MCQs start as drafts. Submit them for review before publication.</p>}
         </form>
       </section>

@@ -44,7 +44,8 @@ export async function POST(request: Request) {
      WHERE topic_id = ? AND status != 'archived' AND id != ?
      ORDER BY updated_at DESC, id DESC LIMIT 1000`, [topicId, questionId],
   );
-  const similar = rows.map((row) => ({ id: row.id, prompt: row.question_text, status: row.status, similarity: similarity(prompt, row.question_text) }))
+  const normalizedPrompt = normalize(prompt);
+  const similar = rows.map((row) => ({ id: row.id, prompt: row.question_text, status: row.status, similarity: similarity(prompt, row.question_text), exact: normalize(row.question_text) === normalizedPrompt }))
     .filter((row) => row.similarity >= 58)
     .sort((a, b) => b.similarity - a.similarity)
     .slice(0, 5);

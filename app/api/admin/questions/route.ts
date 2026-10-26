@@ -30,13 +30,16 @@ function parseQuestion(body: Record<string, unknown> | null) {
   const sourceNote = typeof body?.sourceNote === "string" ? body.sourceNote.trim() : "";
   const choices = Array.isArray(body?.choices) ? body.choices.map((choice) => typeof choice === "string" ? choice.trim() : "") : [];
   const correctChoice = typeof body?.correctChoice === "string" ? body.correctChoice : "";
+  const questionImageUrl = typeof body?.questionImageUrl === "string" && body.questionImageUrl ? body.questionImageUrl : null;
+  const choiceImageUrls = Array.isArray(body?.choiceImageUrls) ? body.choiceImageUrls.map((url) => typeof url === "string" && url ? url : null) : [null, null, null, null];
   const difficulty = body?.difficulty === "easy" || body?.difficulty === "hard" ? body.difficulty : "medium";
   const paperIds = body && Object.hasOwn(body, "paperIds")
     ? Array.isArray(body.paperIds) ? [...new Set(body.paperIds.map(Number))] : null
     : undefined;
   const normalizedChoices = choices.map((choice) => choice.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase());
-  if (!Number.isInteger(topicId) || topicId < 1 || prompt.length < 8 || prompt.length > 1500 || explanation.length > 3000 || sourceNote.length < 4 || sourceNote.length > 500 || choices.length !== 4 || choices.some((choice) => choice.length < 1 || choice.length > 800) || new Set(normalizedChoices).size !== 4 || !labels.includes(correctChoice as typeof labels[number]) || paperIds === null || (paperIds && (paperIds.length > 50 || paperIds.some((id) => !Number.isSafeInteger(id) || id < 1)))) return null;
-  return { topicId, prompt, explanation, sourceNote, choices, correctChoice, difficulty, paperIds };
+  const validImage = (url: unknown) => url == null || (typeof url === "string" && /^\/uploads\/mcqs\/[a-f0-9-]{36}\.(?:png|jpg|webp)$/.test(url));
+  if (!Number.isInteger(topicId) || topicId < 1 || prompt.length < 8 || prompt.length > 1500 || explanation.length > 3000 || sourceNote.length < 4 || sourceNote.length > 500 || choices.length !== 4 || choices.some((choice) => choice.length < 1 || choice.length > 800) || new Set(normalizedChoices).size !== 4 || !labels.includes(correctChoice as typeof labels[number]) || choiceImageUrls.length !== 4 || !validImage(questionImageUrl) || choiceImageUrls.some((url) => !validImage(url)) || paperIds === null || (paperIds && (paperIds.length > 50 || paperIds.some((id) => !Number.isSafeInteger(id) || id < 1)))) return null;
+  return { topicId, prompt, explanation, sourceNote, choices, choiceImageUrls, questionImageUrl, correctChoice, difficulty, paperIds };
 }
 
 async function validatePaperIds(connection: import("mysql2/promise").PoolConnection, paperIds: number[]) {
@@ -102,9 +105,9 @@ export async function GET(request: Request) {
   const [countRows] = await db.execute<Array<RowDataPacket & { total: number }>>(`SELECT COUNT(*) AS total ${from} ${where}`, values);
   const total = Number(countRows[0]?.total ?? 0);
   const offset = (page - 1) * pageSize;
-  const [questions] = await db.execute<Array<RowDataPacket & { id: number; topic_id: number; topic_name: string; subject_name: string; prompt: string; explanation: string; source_note: string; correct_choice: string; difficulty: string; status: string; review_note: string | null; created_by: number | null; updated_at: string }>>(
+  const [questions] = await db.execute<Array<RowDataPacket & { id: number; topic_id: number; topic_name: string; subject_name: string; prompt: string; explanation: string; source_note: string; correct_choice: string; difficulty: string; status: string; review_note: string | null; created_by: number | null; updated_at: string; question_image_url: string | null }>>(
     `SELECT q.id, q.topic_id, t.name AS topic_name, s.name AS subject_name,
-            q.question_text AS prompt, q.explanation, q.source_note, q.correct_choice, q.difficulty, q.status, q.review_note, q.created_by, q.updated_at
+            q.question_text AS prompt, q.explanation, q.source_note, q.correct_choice, q.difficulty, q.status, q.review_note, q.created_by, q.updated_at, q.question_image_url
      ${from} ${where}
      ORDER BY q.updated_at DESC, q.id DESC LIMIT ? OFFSET ?`,
     [...values, pageSize, offset],
@@ -119,21 +122,21 @@ export async function GET(request: Request) {
   const paperIdMap = new Map<number, number[]>();
   for (const link of paperLinks) paperIdMap.set(link.question_id, [...(paperIdMap.get(link.question_id) ?? []), link.paper_id]);
   const [choices] = questionIds.length
-    ? await db.execute<Array<RowDataPacket & { question_id: number; label: string; choice_text: string }>>(
-      `SELECT question_id, label, choice_text FROM choices
+    ? await db.execute<Array<RowDataPacket & { question_id: number; label: string; choice_text: string; image_url: string | null }>>(
+      `SELECT question_id, label, choice_text, image_url FROM choices
        WHERE question_id IN (${questionIds.map(() => "?").join(",")}) ORDER BY question_id DESC, label`, questionIds,
     )
     : [[] as Array<RowDataPacket & { question_id: number; label: string; choice_text: string }>];
-  const choiceMap = new Map<number, Array<{ label: string; text: string }>>();
+  const choiceMap = new Map<number, Array<{ label: string; text: string; imageUrl: string | null }>>();
   for (const choice of choices) {
     const list = choiceMap.get(choice.question_id) ?? [];
-    list.push({ label: choice.label, text: choice.choice_text });
+    list.push({ label: choice.label, text: choice.choice_text, imageUrl: choice.image_url });
     choiceMap.set(choice.question_id, list);
   }
   const orderedQuestions = idsParam ? [...questions].sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id)) : questions;
   return NextResponse.json({ questions: orderedQuestions.map((question) => ({
     id: question.id, topicId: question.topic_id, topicName: question.topic_name, subjectName: question.subject_name,
-    prompt: question.prompt, explanation: question.explanation, sourceNote: question.source_note, correctChoice: question.correct_choice,
+    prompt: question.prompt, explanation: question.explanation, sourceNote: question.source_note, correctChoice: question.correct_choice, questionImageUrl: question.question_image_url,
     difficulty: question.difficulty, status: question.status, reviewNote: question.review_note, createdBy: question.created_by, paperIds: paperIdMap.get(question.id) ?? [],
     choices: choiceMap.get(question.id) ?? [],
   })), total, page, pageSize }, { headers: { "Cache-Control": "no-store" } });
@@ -160,11 +163,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Choose active past papers. Archived papers cannot receive MCQs." }, { status: 400 });
     }
     const [insert] = await connection.execute(
-      `INSERT INTO questions (topic_id, question_text, explanation, source_note, correct_choice, difficulty, status, created_by, updated_by)
-       SELECT t.id, ?, ?, ?, ?, ?, ?, ?, ? FROM topics t JOIN subjects s ON s.id = t.subject_id
+      `INSERT INTO questions (topic_id, question_text, explanation, source_note, question_image_url, correct_choice, difficulty, status, created_by, updated_by)
+       SELECT t.id, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM topics t JOIN subjects s ON s.id = t.subject_id
        WHERE t.id = ? AND t.status != 'archived' AND s.status != 'archived'
          AND (? != 'published' OR (t.status = 'published' AND s.status = 'published'))`,
-      [parsed.prompt, parsed.explanation, parsed.sourceNote, parsed.correctChoice, parsed.difficulty, status, principal.id, principal.id, parsed.topicId, status],
+      [parsed.prompt, parsed.explanation, parsed.sourceNote, parsed.questionImageUrl, parsed.correctChoice, parsed.difficulty, status, principal.id, principal.id, parsed.topicId, status],
     );
     questionId = (insert as { insertId: number }).insertId;
     if (!questionId) {
@@ -172,7 +175,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Choose a valid subject and topic. Published questions need a published topic." }, { status: 400 });
     }
     for (let index = 0; index < labels.length; index++) {
-      await connection.execute("INSERT INTO choices (question_id, label, choice_text) VALUES (?, ?, ?)", [questionId, labels[index], parsed.choices[index]]);
+      await connection.execute("INSERT INTO choices (question_id, label, choice_text, image_url) VALUES (?, ?, ?, ?)", [questionId, labels[index], parsed.choices[index], parsed.choiceImageUrls[index]]);
     }
     await syncQuestionPapers(connection, questionId, paperIds);
     await connection.commit();
@@ -281,12 +284,12 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Choose active past papers. Archived papers cannot receive MCQs." }, { status: 400 });
     }
     await connection.execute(
-      "UPDATE questions SET topic_id = ?, question_text = ?, explanation = ?, source_note = ?, correct_choice = ?, difficulty = ?, updated_by = ? WHERE id = ?",
-      [parsed.topicId, parsed.prompt, parsed.explanation, parsed.sourceNote, parsed.correctChoice, parsed.difficulty, principal.id, id],
+      "UPDATE questions SET topic_id = ?, question_text = ?, explanation = ?, source_note = ?, question_image_url = ?, correct_choice = ?, difficulty = ?, updated_by = ? WHERE id = ?",
+      [parsed.topicId, parsed.prompt, parsed.explanation, parsed.sourceNote, parsed.questionImageUrl, parsed.correctChoice, parsed.difficulty, principal.id, id],
     );
     await connection.execute("DELETE FROM choices WHERE question_id = ?", [id]);
     for (let index = 0; index < labels.length; index++) {
-      await connection.execute("INSERT INTO choices (question_id, label, choice_text) VALUES (?, ?, ?)", [id, labels[index], parsed.choices[index]]);
+      await connection.execute("INSERT INTO choices (question_id, label, choice_text, image_url) VALUES (?, ?, ?, ?)", [id, labels[index], parsed.choices[index], parsed.choiceImageUrls[index]]);
     }
     if (parsed.paperIds) await syncQuestionPapers(connection, id, parsed.paperIds);
     await connection.commit();

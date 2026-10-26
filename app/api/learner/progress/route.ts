@@ -16,9 +16,18 @@ export async function GET() {
     `SELECT id, quiz_title, quiz_path, score, question_count, completed_at
      FROM quiz_attempts WHERE learner_id = ? ORDER BY completed_at DESC LIMIT 20`, [learner.id],
   );
+  const [weakTopics] = await db.execute<Array<RowDataPacket & { slug: string; topic_name: string; subject_name: string; attempted: number; correct: number }>>(
+    `SELECT t.slug, t.name AS topic_name, s.name AS subject_name, COUNT(*) AS attempted,
+            SUM(qa.is_correct) AS correct
+       FROM quiz_attempt_answers qa JOIN topics t ON t.id = qa.topic_id JOIN subjects s ON s.id = t.subject_id
+      WHERE qa.learner_id = ? GROUP BY t.id
+     HAVING COUNT(*) >= 2 AND SUM(qa.is_correct) / COUNT(*) < 0.6
+      ORDER BY SUM(qa.is_correct) / COUNT(*) ASC, COUNT(*) DESC LIMIT 6`, [learner.id],
+  );
   const summary = summaryRows[0];
   return NextResponse.json({
     summary: { attempts: Number(summary?.attempts ?? 0), averageScore: Number(summary?.average_score ?? 0), savedQuestions: Number(summary?.saved_count ?? 0) },
     attempts: attempts.map((attempt) => ({ ...attempt, completed_at: attempt.completed_at.toISOString() })),
+    weakTopics: weakTopics.map((topic) => ({ ...topic, attempted: Number(topic.attempted), correct: Number(topic.correct) })),
   });
 }

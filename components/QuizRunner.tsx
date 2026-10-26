@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import type { PublicQuestion } from "@/lib/data";
 
 type QuizResult = {
@@ -141,13 +142,14 @@ export function QuizRunner({ questions, title, quizSlug, quizPath }: { questions
             <article className="quiz-question" key={question.id}>
               <div className="question-number">QUESTION {String(index + 1).padStart(2, "0")} <span>{index + 1}/{questions.length}</span></div>
               <h2>{question.prompt}</h2>
+              {question.questionImageUrl && <Image className="quiz-question-image" src={question.questionImageUrl} alt="Question diagram" width={720} height={480} unoptimized />}
               <p className="question-source">Source: {question.sourceNote}</p>
               <button className="question-save-button" onClick={() => void toggleBookmark(question.id)} disabled={savingId === question.id}>{savingId === question.id ? "Saving…" : savedIds.includes(question.id) ? "★ Saved question" : "☆ Save question"}</button>
               <div className="choice-list">
                 {question.choices.map((choice) => (
                   <label className={answers[question.id] === choice.label ? "choice-option selected" : "choice-option"} key={choice.label}>
                     <input type="radio" name={`question-${question.id}`} value={choice.label} checked={answers[question.id] === choice.label} onChange={() => setAnswers((current) => ({ ...current, [question.id]: choice.label }))} />
-                    <span className="choice-label">{choice.label}</span><span>{choice.text}</span>
+                    <span className="choice-label">{choice.label}</span><span>{choice.text}{choice.imageUrl && <Image className="quiz-choice-image" src={choice.imageUrl} alt={`Option ${choice.label} diagram`} width={480} height={320} unoptimized />}</span>
                   </label>
                 ))}
               </div>

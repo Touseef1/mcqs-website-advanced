@@ -1,6 +1,6 @@
 import type { ResultSetHeader } from "mysql2";
 import { NextResponse } from "next/server";
-import { createLearnerSession, hashLearnerPassword, learnerCookieOptions } from "@/lib/learner-auth";
+import { createLearnerActionToken, hashLearnerPassword } from "@/lib/learner-auth";
 import { db, hasDatabase } from "@/lib/db";
 
 export async function POST(request: Request) {
@@ -19,10 +19,12 @@ export async function POST(request: Request) {
     const [result] = await db.execute<ResultSetHeader>(
       "INSERT INTO learners (name, email, password_hash) VALUES (?, ?, ?)", [name, email, hashLearnerPassword(password)],
     );
-    const principal = { id: String(result.insertId), name, email };
-    const response = NextResponse.json({ learner: principal }, { status: 201 });
-    response.cookies.set("mcqpath_learner", createLearnerSession(principal), learnerCookieOptions);
-    return response;
+    try { await createLearnerActionToken(result.insertId, email, "verify_email"); }
+    catch (mailError) {
+      console.error("Learner verification email could not be sent", mailError);
+      return NextResponse.json({ error: "Your account was created, but verification email delivery is unavailable. Configure email and request a new link." }, { status: 503 });
+    }
+    return NextResponse.json({ message: "Account created. Check your email for a verification link before signing in." }, { status: 201 });
   } catch (error) {
     if ((error as { code?: string }).code === "ER_DUP_ENTRY") return NextResponse.json({ error: "An account with that email already exists. Sign in instead." }, { status: 409 });
     console.error("Learner registration failed", error);

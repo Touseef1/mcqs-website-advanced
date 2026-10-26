@@ -25,6 +25,7 @@ export function toPublicQuestion(question: Question): PublicQuestion {
     id: question.id,
     topicSlug: question.topicSlug,
     prompt: question.prompt,
+    questionImageUrl: question.questionImageUrl,
     choices: question.choices,
     explanation: question.explanation,
     sourceNote: question.sourceNote,
@@ -33,8 +34,8 @@ export function toPublicQuestion(question: Question): PublicQuestion {
 
 type SubjectRow = RowDataPacket & { id: number; name: string; slug: string; description: string };
 type TopicRow = RowDataPacket & { id: number; slug: string; name: string; description: string; subject_slug: string; subject_name: string; question_count: number };
-type QuestionRow = RowDataPacket & { id: number; topic_slug: string; prompt: string; correct_choice: string; explanation: string | null; source_note: string };
-type ChoiceRow = RowDataPacket & { question_id: number; label: string; choice_text: string };
+type QuestionRow = RowDataPacket & { id: number; topic_slug: string; prompt: string; question_image_url?: string | null; correct_choice: string; explanation: string | null; source_note: string };
+type ChoiceRow = RowDataPacket & { question_id: number; label: string; choice_text: string; image_url?: string | null };
 type PaperRow = RowDataPacket & { id: number; slug: string; title: string; exam: string; year: number; type: Paper["type"]; description: string };
 
 export async function getSubjects(): Promise<Subject[]> {
@@ -148,7 +149,7 @@ export async function getQuestions(topicSlug: string): Promise<Question[]> {
   if (!hasDatabase || !db) return getDemoQuestionsForTopic(topicSlug);
   const [questionRows] = await db.execute<QuestionRow[]>(
     `SELECT q.id, t.slug AS topic_slug, q.question_text AS prompt,
-            q.correct_choice, q.explanation, q.source_note
+            q.correct_choice, q.explanation, q.source_note, q.question_image_url
      FROM questions q JOIN topics t ON t.id = q.topic_id
      WHERE t.slug = ? AND q.status = 'published' ORDER BY q.id`,
     [topicSlug],
@@ -157,7 +158,7 @@ export async function getQuestions(topicSlug: string): Promise<Question[]> {
   const ids = questionRows.map((row) => row.id);
   const marks = ids.map(() => "?").join(",");
   const [choiceRows] = await db.execute<ChoiceRow[]>(
-    `SELECT question_id, label, choice_text FROM choices
+    `SELECT question_id, label, choice_text, image_url FROM choices
      WHERE question_id IN (${marks}) ORDER BY label`,
     ids,
   );
@@ -165,11 +166,12 @@ export async function getQuestions(topicSlug: string): Promise<Question[]> {
     id: row.id,
     topicSlug: row.topic_slug,
     prompt: row.prompt,
+    questionImageUrl: row.question_image_url,
     correctChoice: row.correct_choice,
     explanation: row.explanation ?? "",
     sourceNote: row.source_note,
     choices: choiceRows.filter((choice) => choice.question_id === row.id)
-      .map((choice) => ({ label: choice.label, text: choice.choice_text })),
+      .map((choice) => ({ label: choice.label, text: choice.choice_text, imageUrl: choice.image_url })),
   }));
 }
 
@@ -260,7 +262,7 @@ export async function getQuestionsForPaper(slug: string): Promise<Question[]> {
   }
   const [rows] = await db.execute<QuestionRow[]>(
     `SELECT q.id, t.slug AS topic_slug, q.question_text AS prompt,
-            q.correct_choice, q.explanation, q.source_note
+            q.correct_choice, q.explanation, q.source_note, q.question_image_url
      FROM papers p
      JOIN paper_questions pq ON pq.paper_id = p.id
      JOIN questions q ON q.id = pq.question_id
@@ -273,7 +275,7 @@ export async function getQuestionsForPaper(slug: string): Promise<Question[]> {
   const ids = rows.map((row) => row.id);
   const marks = ids.map(() => "?").join(",");
   const [choiceRows] = await db.execute<ChoiceRow[]>(
-    `SELECT question_id, label, choice_text FROM choices
+    `SELECT question_id, label, choice_text, image_url FROM choices
      WHERE question_id IN (${marks}) ORDER BY label`,
     ids,
   );
@@ -281,11 +283,12 @@ export async function getQuestionsForPaper(slug: string): Promise<Question[]> {
     id: row.id,
     topicSlug: row.topic_slug,
     prompt: row.prompt,
+    questionImageUrl: row.question_image_url,
     correctChoice: row.correct_choice,
     explanation: row.explanation ?? "",
     sourceNote: row.source_note,
     choices: choiceRows.filter((choice) => choice.question_id === row.id)
-      .map((choice) => ({ label: choice.label, text: choice.choice_text })),
+      .map((choice) => ({ label: choice.label, text: choice.choice_text, imageUrl: choice.image_url })),
   }));
 }
 
@@ -324,8 +327,12 @@ export async function searchContent(query: string) {
     `SELECT q.id, t.slug AS topic_slug, q.question_text AS prompt,
             q.correct_choice, q.explanation
      FROM questions q JOIN topics t ON t.id = q.topic_id
-     WHERE q.status = 'published' AND q.question_text LIKE ? LIMIT 10`,
-    [wildcard],
+     WHERE q.status = 'published'
+       AND (MATCH(q.question_text) AGAINST (? IN BOOLEAN MODE) OR q.question_text LIKE ?)
+     ORDER BY CASE WHEN MATCH(q.question_text) AGAINST (? IN BOOLEAN MODE) THEN 0 ELSE 1 END,
+              q.updated_at DESC LIMIT 10`,
+    [normalized.split(/\s+/).filter((term) => /^[\p{L}\p{N}]{2,}$/u.test(term)).map((term) => `+${term}*`).join(" "), wildcard,
+      normalized.split(/\s+/).filter((term) => /^[\p{L}\p{N}]{2,}$/u.test(term)).map((term) => `+${term}*`).join(" ")],
   );
   return {
     subjects: subjects.map((item) => ({ id: item.id, slug: item.slug, name: item.name, description: item.description, icon: item.name.slice(0, 2).toUpperCase(), topics: [] })),

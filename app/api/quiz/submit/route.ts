@@ -2,8 +2,11 @@ import { NextResponse } from "next/server";
 import { gradeQuestions } from "@/lib/data";
 import { getLearnerPrincipal } from "@/lib/learner-auth";
 import { db } from "@/lib/db";
+import { rateLimit } from "@/lib/rate-limit";
 
 export async function POST(request: Request) {
+  const limit = await rateLimit(request, "quiz-submit", 20, 60);
+  if (!limit.allowed) return NextResponse.json({ error: "Too many quiz submissions. Wait a minute and try again." }, { status: 429, headers: { "Retry-After": String(limit.retryAfter) } });
   const body: unknown = await request.json().catch(() => null);
   if (
     !body ||
@@ -37,11 +40,26 @@ export async function POST(request: Request) {
     ? Math.max(0, Math.min(7200, Math.floor(body.elapsedSeconds)))
     : 0;
   if (learner && db && result.total > 0) {
-    await db.execute(
-      `INSERT INTO quiz_attempts (learner_id, quiz_title, quiz_path, score, question_count, elapsed_seconds)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [learner.id, quizTitle || "Practice quiz", quizPath, result.score, result.total, elapsedSeconds],
-    );
+    const connection = await db.getConnection();
+    try {
+      await connection.beginTransaction();
+      const [attemptResult] = await connection.execute(
+        `INSERT INTO quiz_attempts (learner_id, quiz_title, quiz_path, score, question_count, elapsed_seconds)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [learner.id, quizTitle || "Practice quiz", quizPath, result.score, result.total, elapsedSeconds],
+      );
+      const attemptId = (attemptResult as { insertId: number }).insertId;
+      const selected = new Map(answers.map((answer) => [answer.questionId, answer.choice || null]));
+      for (const answer of result.results) {
+        await connection.execute(
+          `INSERT INTO quiz_attempt_answers (learner_id, attempt_id, question_id, topic_id, selected_choice, correct_choice, is_correct)
+           SELECT ?, ?, q.id, q.topic_id, ?, ?, ? FROM questions q WHERE q.id = ? AND q.status = 'published'`,
+          [learner.id, attemptId, selected.get(answer.questionId) ?? null, answer.correctChoice, answer.correct, answer.questionId],
+        );
+      }
+      await connection.commit();
+    } catch (error) { await connection.rollback(); console.error("Could not save learner quiz attempt answers", error); }
+    finally { connection.release(); }
   }
   return NextResponse.json(result);
 }

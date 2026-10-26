@@ -21,20 +21,22 @@ function parsePaper(body: Record<string, unknown> | null) {
   const title = typeof body?.title === "string" ? body.title.trim() : "";
   const description = typeof body?.description === "string" ? body.description.trim() : "";
   const year = Number(body?.year);
-  const type = body?.type === "Past paper" ? "Past paper" : null;
+  const type = ["Past paper", "Model paper", "Mock test"].includes(String(body?.type)) ? String(body?.type) : null;
+  const shiftSession = typeof body?.shiftSession === "string" ? body.shiftSession.trim() : "";
+  const expectedQuestionCount = body?.expectedQuestionCount === "" || body?.expectedQuestionCount == null ? null : Number(body.expectedQuestionCount);
   const slug = typeof body?.slug === "string" && body.slug.trim() ? slugify(body.slug) : slugify(title);
   const questionIds = Array.isArray(body?.questionIds) ? [...new Set(body.questionIds.map(Number))] : [];
-  if (examName.length < 2 || examName.length > 160 || title.length < 3 || title.length > 220 || description.length < 3 || description.length > 3000 || !Number.isInteger(year) || year < 1900 || year > 2200 || !type || !validSlug(slug) || questionIds.length < 1 || questionIds.length > 300 || questionIds.some((id) => !Number.isInteger(id) || id < 1)) return null;
-  return { examName, title, description, year, type, slug, questionIds };
+  if (examName.length < 2 || examName.length > 160 || title.length < 3 || title.length > 220 || description.length < 3 || description.length > 3000 || !Number.isInteger(year) || year < 1900 || year > 2200 || !type || shiftSession.length > 120 || (expectedQuestionCount !== null && (!Number.isInteger(expectedQuestionCount) || expectedQuestionCount < 1 || expectedQuestionCount > 500)) || !validSlug(slug) || questionIds.length < 1 || questionIds.length > 300 || questionIds.some((id) => !Number.isInteger(id) || id < 1)) return null;
+  return { examName, title, description, year, type, shiftSession: shiftSession || null, expectedQuestionCount, slug, questionIds };
 }
 
 export async function GET() {
   const principal = await getAdminPrincipal();
   if (!principal || !requirePermission(principal, "content:view")) return NextResponse.json({ error: "Sign in with a content role." }, { status: 401 });
   if (!hasDatabase || !db) return noDatabase();
-  const [papers] = await db.execute<Array<RowDataPacket & { id: number; exam_id: number; exam_name: string; title: string; slug: string; year: number; type: string; description: string; status: string; question_count: number }>>(
+  const [papers] = await db.execute<Array<RowDataPacket & { id: number; exam_id: number; exam_name: string; title: string; slug: string; year: number; type: string; description: string; status: string; question_count: number; shift_session: string | null; expected_question_count: number | null }>>(
     `SELECT p.id, p.exam_id, e.name AS exam_name, p.title, p.slug, p.year,
-            p.paper_type AS type, p.description, p.status, COUNT(pq.question_id) AS question_count
+            p.paper_type AS type, p.description, p.status, p.shift_session, p.expected_question_count, COUNT(pq.question_id) AS question_count
      FROM papers p JOIN exams e ON e.id = p.exam_id
      LEFT JOIN paper_questions pq ON pq.paper_id = p.id
      GROUP BY p.id ORDER BY p.year DESC, p.id DESC`,
@@ -45,7 +47,7 @@ export async function GET() {
   return NextResponse.json({ papers: papers.map((paper) => ({
     id: paper.id, examId: paper.exam_id, examName: paper.exam_name, title: paper.title,
     slug: paper.slug, year: paper.year, type: paper.type, description: paper.description,
-    status: paper.status, questionCount: Number(paper.question_count),
+    status: paper.status, shiftSession: paper.shift_session, expectedQuestionCount: paper.expected_question_count == null ? null : Number(paper.expected_question_count), questionCount: Number(paper.question_count),
     questionIds: links.filter((link) => link.paper_id === paper.id).map((link) => link.question_id),
   })) }, { headers: { "Cache-Control": "no-store" } });
 }
@@ -106,14 +108,14 @@ async function savePaper(request: Request, body: Record<string, unknown> | null,
         return NextResponse.json({ error: "Past paper not found." }, { status: 404 });
       }
       await connection.execute(
-        "UPDATE papers SET exam_id = ?, title = ?, slug = ?, year = ?, paper_type = ?, description = ?, status = ?, updated_by = ? WHERE id = ?",
-        [examId, paper.title, paper.slug, paper.year, paper.type, paper.description, status, principal.id, id],
+        "UPDATE papers SET exam_id = ?, title = ?, slug = ?, year = ?, paper_type = ?, shift_session = ?, expected_question_count = ?, description = ?, status = ?, updated_by = ? WHERE id = ?",
+        [examId, paper.title, paper.slug, paper.year, paper.type, paper.shiftSession, paper.expectedQuestionCount, paper.description, status, principal.id, id],
       );
       await connection.execute("DELETE FROM paper_questions WHERE paper_id = ?", [id]);
     } else {
       const [insert] = await connection.execute(
-        "INSERT INTO papers (exam_id, title, slug, year, paper_type, description, status, created_by, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [examId, paper.title, paper.slug, paper.year, paper.type, paper.description, status, principal.id, principal.id],
+        "INSERT INTO papers (exam_id, title, slug, year, paper_type, shift_session, expected_question_count, description, status, created_by, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [examId, paper.title, paper.slug, paper.year, paper.type, paper.shiftSession, paper.expectedQuestionCount, paper.description, status, principal.id, principal.id],
       );
       paperId = (insert as { insertId: number }).insertId;
       savedPaperId = paperId;

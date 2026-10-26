@@ -1,9 +1,10 @@
-export type Choice = { label: string; text: string };
+export type Choice = { label: string; text: string; imageUrl?: string | null };
 
 export type Question = {
   id: number;
   topicSlug: string;
   prompt: string;
+  questionImageUrl?: string | null;
   choices: Choice[];
   correctChoice: string;
   explanation: string;
@@ -33,7 +34,7 @@ export type Paper = {
   title: string;
   exam: string;
   year: number;
-  type: "Past paper";
+  type: "Past paper" | "Model paper" | "Mock test";
   description: string;
   topicSlugs: string[];
 };

@@ -74,6 +74,7 @@ The root layout (`app/layout.tsx`) provides the global metadata, header, footer,
 | Categories | Create/edit subjects and topics, manage publication status |
 | Past papers | Create/edit exam papers and build their ordered question lists with the searchable question picker |
 | Team & roles | Create/update admin accounts and assign available roles; Super Admin-only |
+| Exams | Create and rename exam bodies such as FPSC, PPSC, and NTS for reuse by papers |
 
 The admin interface hides unavailable tools for each role, and the API checks the same permissions independently. The UI should not be treated as the security boundary.
 
@@ -152,15 +153,18 @@ This table summarizes the MySQL storage types and the most important rules from 
 |---|---|---|
 | `subjects` | `id BIGINT UNSIGNED`; `name VARCHAR(120)`; `slug VARCHAR(140)`; `description TEXT`; `sort_order INT`; `status ENUM('draft','published','archived')`; `created_at`, `updated_at TIMESTAMP` | `id` is primary key; slug is unique; index on status/order. |
 | `topics` | `id BIGINT UNSIGNED`; `subject_id BIGINT UNSIGNED`; `name VARCHAR(160)`; `slug VARCHAR(180)`; `description TEXT`; `sort_order INT`; same status/timestamp format as subjects | Slug is unique; FK to subject; index on parent/status/order. |
-| `questions` | `id BIGINT UNSIGNED`; `topic_id BIGINT UNSIGNED`; `question_text TEXT`; `explanation TEXT`; `source_note VARCHAR(500)`; `correct_choice CHAR(1)`; `difficulty ENUM('easy','medium','hard')`; `status ENUM('draft','in_review','approved','published','rejected','archived')`; `created_by`, `updated_by`, `reviewed_by`, `reviewed_at`, `review_note`; timestamps | FK to topic; index on topic/status/id. Source note is non-null and defaults to empty text on upgraded installations. |
-| `choices` | `id BIGINT UNSIGNED`; `question_id BIGINT UNSIGNED`; `label CHAR(1)`; `choice_text TEXT` | Unique `(question_id, label)`; FK to question with cascade delete. |
+| `questions` | `id BIGINT UNSIGNED`; `topic_id BIGINT UNSIGNED`; `question_text TEXT`; `question_image_url VARCHAR(500)` nullable; `explanation TEXT`; `source_note VARCHAR(500)`; `correct_choice CHAR(1)`; `difficulty ENUM('easy','medium','hard')`; workflow/ownership/review fields; timestamps | FK to topic; topic/status index and FULLTEXT question search index. Source note is non-null and defaults to empty text on upgraded installations. |
+| `choices` | `id BIGINT UNSIGNED`; `question_id BIGINT UNSIGNED`; `label CHAR(1)`; `choice_text TEXT`; `image_url VARCHAR(500)` nullable | Unique `(question_id, label)`; FK to question with cascade delete. |
 | `exams` | `id BIGINT UNSIGNED`; `name VARCHAR(160)`; `slug VARCHAR(180)` | Slug is unique. |
-| `papers` | `id BIGINT UNSIGNED`; `exam_id BIGINT UNSIGNED`; `title VARCHAR(220)`; `slug VARCHAR(240)`; `year SMALLINT UNSIGNED`; `paper_type ENUM('Past paper')`; `description TEXT`; status enum with draft/published/archived; timestamps are not defined in the initial migration | Slug is unique; FK to exam; index on exam/year. |
+| `papers` | `id BIGINT UNSIGNED`; `exam_id BIGINT UNSIGNED`; `title VARCHAR(220)`; `slug VARCHAR(240)`; `year SMALLINT UNSIGNED`; `paper_type ENUM('Past paper','Model paper','Mock test')`; nullable `shift_session` and `expected_question_count`; `description TEXT`; status and timestamps | Slug is unique; FK to exam; index on exam/year. |
 | `paper_questions` | `paper_id BIGINT UNSIGNED`; `question_id BIGINT UNSIGNED`; `question_order INT` | Composite primary key `(paper_id, question_id)`; unique `(paper_id, question_order)`; FKs to paper and question. |
 | `admin_users` | `id BIGINT UNSIGNED`; `name VARCHAR(140)`; `email VARCHAR(190)`; `password_hash VARCHAR(180)`; `role ENUM('super_admin','admin','data_entry','reviewer','publisher')`; `status ENUM('active','inactive')`; session/security fields; timestamps | Unique email; index on role/status. Bootstrap `super_admin` is stored in the database after first login. |
 | `learners` | `id BIGINT UNSIGNED`; `name VARCHAR(140)`; `email VARCHAR(190)`; `password_hash VARCHAR(180)`; `status ENUM('active','inactive')`; timestamps | Unique email; index on status. |
 | `learner_bookmarks` | `learner_id BIGINT UNSIGNED`; `question_id BIGINT UNSIGNED`; `created_at TIMESTAMP` | Composite primary key `(learner_id, question_id)`; both FKs cascade on delete. |
 | `quiz_attempts` | `id BIGINT UNSIGNED`; `learner_id BIGINT UNSIGNED`; `quiz_title VARCHAR(220)`; `quiz_path VARCHAR(260)`; `score SMALLINT UNSIGNED`; `question_count SMALLINT UNSIGNED`; `elapsed_seconds INT UNSIGNED`; `completed_at TIMESTAMP` | FK to learner; index on learner/completion date. |
+| `learner_action_tokens` | Learner ID, SHA-256 token hash, verification/reset purpose, expiry, used timestamp | Single-use email verification and password reset tokens; cascades with learner deletion. |
+| `quiz_attempt_answers` | Attempt, learner, question/topic IDs, selected/correct choices, correctness flag | Stores answer review and supports weak-topic estimates; one row per question per attempt. |
+| `api_rate_limit_buckets` | Hashed scope/IP key, window start, hit count | Shared fixed-window counts for sensitive APIs. |
 
 ### Relationship diagram
 
@@ -231,14 +235,22 @@ All endpoints are Next.js Route Handlers under `app/api`. Admin endpoints requir
 | `/api/admin/questions/bulk` | `POST` | Atomically import MCQs or perform permission-checked multi-question category, review, paper-link, publish, and archive actions. |
 | `/api/admin/questions/similar` | `POST` | Return likely same-topic duplicate candidates for a non-blocking entry warning. |
 | `/api/admin/categories` | `GET`, `POST`, `PATCH` | Read/manage subjects and topics, including status transitions. |
+| `/api/admin/exams` | `GET`, `POST`, `PATCH` | List, create, and rename exam names such as FPSC, PPSC, and NTS. |
+| `/api/admin/dashboard` | `GET` | Return workflow counts, MCQs per topic, categories without MCQs, and papers below expected question counts. |
 | `/api/admin/papers` | `GET`, `POST`, `PATCH`, `DELETE` | Read, create, update, publish, and archive past papers and ordered question links. |
 | `/api/admin/papers/quick-create` | `POST` | Create a draft paper inline from its exam, title, and year, then return it for selection in the entry context. |
 | `/api/admin/papers/reorder` | `POST` | Validate and transactionally replace the ordered question list for a paper while respecting the unique paper/order constraint. |
 | `/api/admin/question-picker` | `GET` | Search/filter/paginate question bank for paper editing; can fetch selected question IDs. |
+| `/api/admin/question-images` | `POST` | Upload a validated question or option PNG, JPEG, or WebP image, limited to 5 MB. |
+| `/api/admin/export` | `GET` | Download a paper or subject/topic category as CSV or PDF. |
 | `/api/admin/users` | `GET`, `POST`, `PATCH` | Manage staff accounts (Super Admin permission). |
 | `/api/quiz/submit` | `POST` | Validate answer submissions, grade on the server, return results, and save signed-in attempts. |
 | `/api/learner/register` | `POST` | Create a learner and sign them in. |
 | `/api/learner/login` | `POST` | Verify credentials and issue learner session. |
+| `/api/learner/verify-email` | `POST` | Consume a one-time email verification token. |
+| `/api/learner/resend-verification` | `POST` | Send another verification message without revealing whether an account exists. |
+| `/api/learner/forgot-password` | `POST` | Request a one-time password reset link. |
+| `/api/learner/reset-password` | `POST` | Set a new password and invalidate existing learner sessions. |
 | `/api/learner/logout` | `POST` | Clear the learner session. |
 | `/api/learner/bookmarks` | `GET`, `POST`, `DELETE` | List, save, and remove a learner's question bookmarks. |
 | `/api/learner/progress` | `GET` | Return quiz attempt history and account summary counts. |
@@ -264,8 +276,9 @@ Required environment values are documented in `.env.example`:
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Bootstrap Super Admin login |
 | `SESSION_SECRET` | Long random key used to sign admin and learner sessions |
 | `NEXT_PUBLIC_SITE_URL` | Canonical public site origin; use the production HTTPS URL on deployment |
+| `RESEND_API_KEY`, `RESEND_FROM` | Email delivery for learner verification and password resets; `RESEND_FROM` must be a verified sender. In development without a key, links are logged to the server console. |
 
-Apply the SQL files in migration order: `001_initial_schema.sql`, `002_role_based_admin.sql`, `003_learner_accounts.sql`, then `005_verified_papers_only.sql`. The `005` migration removes old generated practice content and adds source-reference requirements for questions. `sql/seed.sql` is optional starter data; do not treat sample rows as official exam papers.
+Apply migrations `001` through `007` in the order documented in [MIGRATIONS.md](./MIGRATIONS.md). Migration `004` restores the missing migration number and adds paper metadata. Migration `005` removes old generated practice content and adds source-reference requirements for questions. `sql/seed.sql` is optional starter data; do not treat sample rows as official exam papers.
 
 Common project commands:
 
@@ -286,3 +299,27 @@ npm run build
 6. Archive content instead of hard-deleting content that may be referenced by a paper or learner activity.
 7. Revalidate cache tags after content updates, especially `subjects`, `topics`, `questions`, and `papers`.
 8. Never commit real database passwords, admin passwords, or session secrets. Keep them in local/deployment environment configuration.
+
+## 11. Exam administration and paper metadata
+
+The Admin workspace includes an Exams screen backed by `GET`, `POST`, and `PATCH /api/admin/exams`. Staff with `paper.manage` can create or rename an exam and its slug; API authorization, parameterized SQL, CSRF origin checks, and the admin audit log apply. Papers reference `exams.id`, so renaming an exam updates the label for all related papers without changing their links.
+
+Papers support the types `Past paper`, `Model paper`, and `Mock test`, optional `shift_session`, optional `expected_question_count`, and created/updated timestamps. The expected count is used by the dashboard warning when a paper has fewer linked MCQs than planned. The migration sequence and upgrade notes are in `docs/MIGRATIONS.md`.
+
+## 12. Search, images, dashboard, and exports
+
+Public question search uses MySQL `FULLTEXT` (`MATCH ... AGAINST` in boolean mode) and keeps a parameterized `LIKE` fallback for short terms that MySQL's full-text tokenizer may not index. The question admin checks normalized text in the same topic and reports an exact normalized match separately from fuzzy similarity; both are warnings and do not block saving.
+
+Dashboard metrics come from `/api/admin/dashboard`, so the draft and review counts are not limited to the first page of the MCQ bank. It lists per-topic counts, zero-question topics, and active papers below their optional expected question count. `content:view` is required to load these aggregate metrics.
+
+Question and option image uploads accept PNG, JPEG, and WebP only, verify file signatures rather than trusting the browser MIME type, generate opaque filenames, and reject files larger than 5 MB. SVG is disallowed. Images live under `public/uploads/mcqs`; on a self-hosted Ubuntu deployment, back up this folder and keep it on persistent storage. The content table stores only the generated relative URL. Admin upload requires a question edit/create permission and same-origin request.
+
+The admin export route downloads all non-archived MCQs attached to a paper, subject, or topic as UTF-8 CSV or PDF. Exports contain prompt, category, four options, question/option image URLs, answer, source note, and explanation. Export requires a signed-in content role.
+
+## 13. Learner verification, recovery, and feedback
+
+New learner accounts are pending until they verify their email. Existing learners are marked verified by migration 007 to avoid locking out accounts created before email verification existed. Verification and reset links use random one-time tokens; only SHA-256 token hashes are stored, verification links expire after 24 hours, and reset links expire after one hour. Password reset increments `learners.session_version`, immediately invalidating sessions. To send actual email, configure `RESEND_API_KEY`, `RESEND_FROM`, and `NEXT_PUBLIC_SITE_URL`. Local development without a Resend key writes the action link to the server terminal.
+
+The quiz already showed correct answers and explanations after submission; this update also stores a per-question learner result in `quiz_attempt_answers`. The account progress API uses these rows to suggest topics with at least two answers and below 60% accuracy. Anonymous quiz results still show the review but are not stored for later weakness suggestions.
+
+Rate limits use MySQL fixed-window buckets in `api_rate_limit_buckets` for quiz submissions, learner sign-in, password reset, and verification resend. When MySQL is unavailable, a process-local in-memory fallback is used for local development; production deployments should have MySQL configured so limits are shared by all app processes.
