@@ -51,7 +51,11 @@ MCQPath is a search-friendly MCQ and exam-practice website for learners in Pakis
    sudo mysql < sql/migrations/001_initial_schema.sql
    sudo mysql < sql/migrations/002_role_based_admin.sql
    sudo mysql < sql/migrations/003_learner_accounts.sql
+   sudo mysql < sql/migrations/004_paper_metadata.sql
    sudo mysql < sql/migrations/005_verified_papers_only.sql
+   sudo mysql < sql/migrations/006_admin_roles_workflow_security.sql
+   sudo mysql < sql/migrations/007_platform_improvements.sql
+   sudo mysql < sql/migrations/008_workflow_integrity.sql
    sudo mysql < sql/seed.sql
    ```
 
@@ -71,20 +75,21 @@ MCQPath is a search-friendly MCQ and exam-practice website for learners in Pakis
 
    Open [http://localhost:3000](http://localhost:3000). The admin area is at `/admin`.
 
-Without MySQL, the site shows category placeholders only; it does not show generated MCQs or sample papers. The admin area requires MySQL, migrations `001`, `002`, `005`, and `006`, and its environment settings. Learner registration, bookmarks, and quiz history additionally require migration `003` and `SESSION_SECRET`.
+Without MySQL, the site shows category placeholders only; it does not show generated MCQs or sample papers. The admin area requires MySQL and migrations `001` through `008` in order, as detailed in `docs/MIGRATIONS.md`. Learner registration, bookmarks, and quiz history additionally require migration `003` and `SESSION_SECRET`.
 
-Every MCQ needs an exam/source reference in the admin form. MCQs without this reference cannot be published. MCQs now follow draft, review, approval, publication, and archive states. Data Entry staff can edit only their own drafts; review and publishing permissions are separate. The paper builder searches the bank and orders questions.
+Every MCQ needs an exam/source reference in the admin form. MCQs without this reference cannot be published. MCQs follow the shared draft, review, approval, publication, rejection, and archive state machine. Data Entry staff can edit their own drafts or rejected items and add MCQs to papers; inline paper creation requires the separate `paper.quickcreate` permission. The paper builder searches the bank and orders questions. See `docs/ADMIN_ROLES.md` and `docs/MIGRATIONS.md` for permissions and upgrades.
 
 ## Admin roles
 
-Sign in at `/admin` with the `ADMIN_EMAIL` and `ADMIN_PASSWORD` configured in `.env.local`. This environment-based account is the bootstrap super admin and is not stored in the application database. Use **Team & roles** in the dashboard to create additional accounts. Each team account needs a unique email and a password of at least 12 characters; the password is stored as a salted scrypt hash.
+Sign in at `/admin` with the bootstrap credentials in `.env.local`. The bootstrap Super Admin is stored in `admin_users` at first database-backed login; after that, the database account and its password are authoritative. Use **Team & roles** to create staff accounts. Each team account needs a unique email; passwords are stored as salted scrypt hashes.
 
 | Role | Access |
 | --- | --- |
-| Super admin | Manage categories, MCQs, past papers, publishing, and team accounts; assign the Admin role |
-| Admin | Manage all content and team accounts; cannot assign the Admin role |
-| Editor | Create and edit subjects/topics, MCQs, and papers as drafts |
-| Reviewer | Review records and publish or archive content |
+| Super Admin | Full access, including Super Admin team management and system settings |
+| Admin | Manage content and regular team accounts; cannot manage Super Admins or system settings |
+| Data Entry | Create MCQs, edit own draft/rejected MCQs, and add MCQs to papers |
+| Reviewer | Edit and review submitted MCQs; approve or reject with a comment |
+| Publisher | Manage papers and publish approved MCQs |
 
 New staff accounts must change their temporary password on first login. Admin sessions are invalidated immediately when accounts are deactivated, roles change, or passwords reset. See `docs/ADMIN_ROLES.md` for the permission matrix and migration steps.
 
@@ -93,6 +98,7 @@ New staff accounts must change their temporary password on first login. Admin se
 ```bash
 npm run dev       # Start local development
 npm run lint      # Run ESLint
+npm run test      # Run workflow unit tests
 npm run build     # Check the production build
 npm run start     # Run a production build locally
 ```

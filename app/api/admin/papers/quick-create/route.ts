@@ -9,7 +9,7 @@ export async function POST(request: Request) {
   const csrf = csrfFailure(request);
   if (csrf) return csrf;
   const principal = await getAdminPrincipal();
-  if (!principal || !requirePermission(principal, "paper.manage")) return NextResponse.json({ error: "Your role cannot create past papers." }, { status: 403 });
+  if (!principal || !requirePermission(principal, "paper.quickcreate")) return NextResponse.json({ error: "Your role cannot quick-create past papers." }, { status: 403 });
   if (!hasDatabase || !db) return NextResponse.json({ error: "Configure MySQL and apply the database migrations first." }, { status: 503 });
   const body = await request.json().catch(() => null);
   const examName = typeof body?.examName === "string" ? body.examName.trim() : "";

@@ -7,10 +7,10 @@ type Status = "draft" | "in_review" | "approved" | "published" | "rejected" | "a
 type Topic = { id: number; subject_id: number; subject_name: string; name: string; status: Status };
 type Paper = { id: number; examId: number; examName: string; title: string; slug: string; year: number; type: "Past paper" | "Model paper" | "Mock test"; description: string; status: Status; questionCount: number; questionIds: number[] };
 type Choice = { label: string; text: string; imageUrl?: string | null };
-type Question = { id: number; topicId: number; topicName: string; subjectName: string; prompt: string; questionImageUrl?: string | null; explanation: string; sourceNote: string; correctChoice: string; difficulty: "easy" | "medium" | "hard"; status: Status; reviewNote?: string | null; createdBy?: number | string; paperIds: number[]; choices: Choice[] };
+type Question = { id: number; topicId: number; topicName: string; subjectName: string; prompt: string; questionImageUrl?: string | null; explanation: string; sourceNote: string; correctChoice: string; difficulty: "easy" | "medium" | "hard"; status: Status; version: number; reviewNote?: string | null; createdBy?: number | string; paperIds: number[]; choices: Choice[] };
 type DraftQuestion = { prompt: string; choices: string[]; correctChoice: string; explanation: string; questionImageUrl?: string | null; choiceImageUrls?: Array<string | null> };
 type PreviewRow = DraftQuestion & { rowNumber: number; errors: string[] };
-type Props = { topics: Topic[]; papers: Paper[]; canManagePapers: boolean; canPublish: boolean; canDelete: boolean; canCreateMcqs: boolean; canReviewMcqs: boolean; canEditOwnMcqs: boolean; canEditAnyMcqs: boolean; currentUserId: string; initialPaperId: number | null; onUpdated: () => Promise<void> };
+type Props = { topics: Topic[]; papers: Paper[]; canManagePapers: boolean; canAddQuestionsToPapers: boolean; canQuickCreatePaper: boolean; canPublish: boolean; canDelete: boolean; canCreateMcqs: boolean; canReviewMcqs: boolean; canEditOwnMcqs: boolean; canEditAnyMcqs: boolean; currentUserId: string; initialPaperId: number | null; initialSearch?: string; initialStatus?: string; startInBank?: boolean; onUpdated: () => Promise<void> };
 
 const emptyDraft: DraftQuestion = { prompt: "", choices: ["", "", "", ""], correctChoice: "", explanation: "", questionImageUrl: null, choiceImageUrls: [null, null, null, null] };
 const questionLabels = ["A", "B", "C", "D"] as const;
@@ -19,13 +19,23 @@ const sessionIdsKey = "mcqpath:question-entry-session-ids";
 const sessionCountKey = "mcqpath:question-entry-session-count";
 
 async function adminRequest<T = Record<string, unknown>>(path: string, method = "GET", body?: unknown): Promise<T> {
-  const response = await fetch(path, {
+  const send = (payload?: unknown) => fetch(path, {
     method,
     cache: "no-store",
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
+    headers: payload ? { "Content-Type": "application/json" } : undefined,
+    body: payload ? JSON.stringify(payload) : undefined,
   });
+  let response = await send(body);
   const result = await response.json().catch(() => ({}));
+  if (!response.ok && Array.isArray(result.affectedPapers) && body && typeof body === "object" && !("confirmPaperRemoval" in body)) {
+    const paperNames = (result.affectedPapers as Array<{ title?: string }>).map((paper) => paper.title).filter(Boolean).join("\n• ");
+    if (window.confirm(`${result.error || "This change affects published papers."}\n\nAffected papers:\n• ${paperNames}\n\nRemove this MCQ from these papers and continue?`)) {
+      response = await send({ ...(body as Record<string, unknown>), confirmPaperRemoval: true });
+      const confirmedResult = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(confirmedResult.error || "The request could not be completed.");
+      return confirmedResult as T;
+    }
+  }
   if (!response.ok) throw new Error(result.error || "The request could not be completed.");
   return result as T;
 }
@@ -151,8 +161,8 @@ function SearchPicker({ id, label, value, options, placeholder, onChange, action
   </div>;
 }
 
-export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canPublish, canDelete, canCreateMcqs, canReviewMcqs, canEditOwnMcqs, canEditAnyMcqs, currentUserId, initialPaperId, onUpdated }: Props) {
-  const [mode, setMode] = useState<"quick" | "bulk" | "bank">(canCreateMcqs ? "quick" : "bank");
+export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAddQuestionsToPapers, canQuickCreatePaper, canPublish, canDelete, canCreateMcqs, canReviewMcqs, canEditOwnMcqs, canEditAnyMcqs, currentUserId, initialPaperId, initialSearch = "", initialStatus = "all", startInBank = false, onUpdated }: Props) {
+  const [mode, setMode] = useState<"quick" | "bulk" | "bank">(startInBank || !canCreateMcqs ? "bank" : "quick");
   const [paperOptions, setPaperOptions] = useState(papers);
   const [contextRestored, setContextRestored] = useState(false);
   const [topicId, setTopicId] = useState("");
@@ -162,6 +172,7 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canPub
   const [draft, setDraft] = useState<DraftQuestion>(emptyDraft);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingStatus, setEditingStatus] = useState<Status>("draft");
+  const [editingVersion, setEditingVersion] = useState(1);
   const [editingPaperIds, setEditingPaperIds] = useState<number[]>([]);
   const [busy, setBusy] = useState(false);
   const [imageBusy, setImageBusy] = useState(false);
@@ -171,7 +182,8 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canPub
   const [sessionQuestions, setSessionQuestions] = useState<Question[]>([]);
   const [sessionCount, setSessionCount] = useState(0);
   const [bankQuestions, setBankQuestions] = useState<Question[]>([]);
-  const [bankSearch, setBankSearch] = useState("");
+  const [bankSearch, setBankSearch] = useState(initialSearch);
+  const [bankStatus, setBankStatus] = useState(initialStatus);
   const [bankTopic, setBankTopic] = useState("");
   const [bankPage, setBankPage] = useState(1);
   const [bankTotal, setBankTotal] = useState(0);
@@ -187,7 +199,16 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canPub
   const [newPaperError, setNewPaperError] = useState("");
   const [newPaper, setNewPaper] = useState({ examName: "", title: "", year: String(new Date().getFullYear()) });
   const questionRef = useRef<HTMLTextAreaElement>(null);
-  const canUsePapers = canManagePapers;
+  const canUsePapers = canAddQuestionsToPapers;
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setBankSearch(initialSearch);
+      setBankStatus(initialStatus);
+      if (startInBank) setMode("bank");
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [initialSearch, initialStatus, startInBank]);
 
   const topicOptions = useMemo(() => topics.filter((topic) => topic.status !== "archived").map((topic) => ({ value: String(topic.id), label: `${topic.subject_name} › ${topic.name}`, meta: topic.status })), [topics]);
   const paperPickerOptions = useMemo(() => paperOptions.filter((paper) => paper.status !== "archived").map((paper) => ({ value: String(paper.id), label: paper.title, meta: `${paper.examName} · ${paper.year} · ${paper.status}` })), [paperOptions]);
@@ -224,7 +245,7 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canPub
   }, [topicOptions, paperPickerOptions]);
 
   useEffect(() => {
-    if (!initialPaperId || !paperPickerOptions.some((option) => option.value === String(initialPaperId))) return;
+    if (startInBank || !initialPaperId || !paperPickerOptions.some((option) => option.value === String(initialPaperId))) return;
     const paper = paperOptions.find((item) => item.id === initialPaperId);
     const timeout = window.setTimeout(() => {
       setPaperId(String(initialPaperId));
@@ -232,7 +253,7 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canPub
       setMode("quick");
     }, 0);
     return () => window.clearTimeout(timeout);
-  }, [initialPaperId, paperOptions, paperPickerOptions]);
+  }, [initialPaperId, paperOptions, paperPickerOptions, startInBank]);
 
   useEffect(() => {
     if (!contextRestored) return;
@@ -245,6 +266,7 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canPub
     setBankLoading(true);
     const params = new URLSearchParams({ search: bankSearch, page: String(bankPage), pageSize: "25" });
     if (bankTopic) params.set("topicId", bankTopic);
+    if (bankStatus !== "all") params.set("status", bankStatus);
     try {
       const result = await adminRequest<{ questions: Question[]; total: number }>(`/api/admin/questions?${params}`);
       setBankQuestions(result.questions ?? []);
@@ -252,7 +274,7 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canPub
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not load the MCQ bank.");
     } finally { setBankLoading(false); }
-  }, [bankSearch, bankPage, bankTopic]);
+  }, [bankSearch, bankPage, bankTopic, bankStatus]);
 
   useEffect(() => {
     if (mode !== "bank") return;
@@ -312,8 +334,8 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canPub
     setBusy(true);
     try {
       const paperIds = canUsePapers ? (editingId ? editingPaperIds : paperId ? [Number(paperId)] : []) : undefined;
-      const body = { id: editingId ?? undefined, topicId: Number(topicId), paperIds, prompt: draft.prompt.trim(), questionImageUrl: draft.questionImageUrl ?? null, choiceImageUrls: draft.choiceImageUrls ?? [null, null, null, null], choices: draft.choices.map((choice) => choice.trim()), correctChoice: draft.correctChoice, explanation: draft.explanation.trim(), sourceNote: sourceNote.trim(), difficulty };
-      const result = await adminRequest<{ id?: number }>("/api/admin/questions", editingId ? "PATCH" : "POST", body);
+      const body = { id: editingId ?? undefined, expectedVersion: editingId ? editingVersion : undefined, topicId: Number(topicId), paperIds, prompt: draft.prompt.trim(), questionImageUrl: draft.questionImageUrl ?? null, choiceImageUrls: draft.choiceImageUrls ?? [null, null, null, null], choices: draft.choices.map((choice) => choice.trim()), correctChoice: draft.correctChoice, explanation: draft.explanation.trim(), sourceNote: sourceNote.trim(), difficulty };
+      const result = await adminRequest<{ id?: number; version?: number; status?: Status }>("/api/admin/questions", editingId ? "PATCH" : "POST", body);
       const id = editingId ?? Number(result.id);
       const topic = topics.find((item) => item.id === Number(topicId));
       const existing = sessionQuestions.find((question) => question.id === id);
@@ -328,7 +350,8 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canPub
         sourceNote: sourceNote.trim(),
         correctChoice: draft.correctChoice,
         difficulty,
-        status: editingId ? editingStatus : "draft",
+        status: editingId ? (result.status ?? editingStatus) : "draft",
+        version: result.version ?? (editingId ? editingVersion + 1 : 1),
         paperIds: paperIds ?? existing?.paperIds ?? [],
         choices: draft.choices.map((text, index) => ({ label: questionLabels[index], text: text.trim(), imageUrl: draft.choiceImageUrls?.[index] ?? null })),
       };
@@ -366,6 +389,7 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canPub
     setDifficulty(question.difficulty);
     setEditingId(question.id);
     setEditingStatus(question.status);
+    setEditingVersion(question.version);
     setEditingPaperIds(question.paperIds);
     if (canUsePapers && question.paperIds[0]) setPaperId(String(question.paperIds[0]));
     setMode("quick");
@@ -441,6 +465,7 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canPub
         id: result.ids[index], topicId: Number(topicId), topicName: topic?.name ?? "Topic", subjectName: topic?.subject_name ?? "Subject",
         prompt: row.prompt.trim(), explanation: row.explanation.trim(), sourceNote: sourceNote.trim(), correctChoice: row.correctChoice,
         difficulty, status: "draft", paperIds: paperId ? [Number(paperId)] : [],
+        version: 1,
         choices: row.choices.map((text, choiceIndex) => ({ label: questionLabels[choiceIndex], text: text.trim() })),
       }));
       const updatedSession = [...imported.reverse(), ...sessionQuestions];
@@ -477,7 +502,7 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canPub
   const contextBar = <section className="mcq-context-bar" aria-label="MCQ entry context">
     <div className="mcq-context-heading"><div><span className="eyebrow">ENTRY CONTEXT</span><h2>Set once, keep adding</h2></div><span>Context stays after each save</span></div>
     <div className="mcq-context-grid">
-      {canUsePapers && <SearchPicker id="mcq-context-paper" label="Exam / paper" value={paperId} options={paperPickerOptions} placeholder="Search exams and papers" onChange={(value) => { setPaperId(value); const selected = paperOptions.find((item) => String(item.id) === value); if (selected) setSourceNote(`${selected.examName} ${selected.year} Past Paper`); }} action={{ label: "+ New paper", onClick: () => { setNewPaperError(""); setNewPaperOpen(true); } }} />}
+      {canUsePapers && <SearchPicker id="mcq-context-paper" label="Exam / paper" value={paperId} options={paperPickerOptions} placeholder="Search exams and papers" onChange={(value) => { setPaperId(value); const selected = paperOptions.find((item) => String(item.id) === value); if (selected) setSourceNote(`${selected.examName} ${selected.year} Past Paper`); }} action={canQuickCreatePaper ? { label: "+ New paper", onClick: () => { setNewPaperError(""); setNewPaperOpen(true); } } : undefined} />}
       <SearchPicker id="mcq-context-topic" label="Category · topic" value={topicId} options={topicOptions} placeholder="Search subject › topic" onChange={setTopicId} />
       <div className="mcq-context-field"><label htmlFor="mcq-context-difficulty">Default difficulty</label><select id="mcq-context-difficulty" value={difficulty} onChange={(event) => setDifficulty(event.target.value as typeof difficulty)}><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option></select></div>
       <div className="mcq-context-field"><label htmlFor="mcq-context-source">Source note</label><input id="mcq-context-source" value={sourceNote} onChange={(event) => setSourceNote(event.target.value)} maxLength={500} placeholder={paper ? `${paper.examName} ${paper.year} Past Paper` : "Exam, year, and source"} /></div>
@@ -524,9 +549,9 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canPub
 
     {mode === "bank" && <section className="admin-panel mcq-bank-panel">
       <div className="admin-panel-heading"><div><span className="eyebrow">MCQ BANK</span><h3>{bankTotal.toLocaleString()} MCQs</h3></div></div>
-      <div className="mcq-bank-filters"><input className="admin-filter" aria-label="Search MCQs" value={bankSearch} onChange={(event) => { setBankSearch(event.target.value); setBankPage(1); }} placeholder="Search question, source, subject, or topic…" /><select aria-label="Filter by category" value={bankTopic} onChange={(event) => { setBankTopic(event.target.value); setBankPage(1); }}><option value="">All categories</option>{topicOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
+      <div className="mcq-bank-filters"><input className="admin-filter" aria-label="Search MCQs" value={bankSearch} onChange={(event) => { setBankSearch(event.target.value); setBankPage(1); }} placeholder="Search question, source, subject, or topic…" /><select aria-label="Filter by category" value={bankTopic} onChange={(event) => { setBankTopic(event.target.value); setBankPage(1); }}><option value="">All categories</option>{topicOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select><select aria-label="Filter by question status" value={bankStatus} onChange={(event) => { setBankStatus(event.target.value); setBankPage(1); }}><option value="all">All statuses</option><option value="draft">Draft</option><option value="in_review">In review</option><option value="approved">Approved</option><option value="published">Published</option><option value="rejected">Rejected</option><option value="archived">Archived</option></select></div>
       {selectedIds.length > 0 && <div className="mcq-bulk-toolbar"><strong>{selectedIds.length} selected</strong>{(canEditAnyMcqs || canEditOwnMcqs) && <div className="mcq-bulk-control"><select aria-label="Bulk change category" value={bulkTopicId} onChange={(event) => setBulkTopicId(event.target.value)}><option value="">Choose category</option>{topicOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select><button type="button" className="button button-light" disabled={busy || !bulkTopicId} onClick={() => void runBulkAction("change-category")}>Change category</button></div>}{canManagePapers && <div className="mcq-bulk-control"><select aria-label="Bulk paper action" value={bulkPaperId} onChange={(event) => setBulkPaperId(event.target.value)}><option value="">Choose paper</option>{paperPickerOptions.map((option) => <option key={option.value} value={option.value}>{option.label} · {option.meta}</option>)}</select><button type="button" className="button button-light" disabled={busy || !bulkPaperId} onClick={() => void runBulkAction("add-to-paper")}>Add to paper</button></div>}{canCreateMcqs && <button type="button" className="button button-light" disabled={busy} onClick={() => void runBulkAction("submit-review")}>Submit for review</button>}{canPublish && <button type="button" className="button button-primary" disabled={busy} onClick={() => void runBulkAction("publish")}>Publish</button>}{canDelete && <button type="button" className="button button-light" disabled={busy} onClick={() => void runBulkAction("archive")}>Archive</button>}<button type="button" className="text-link" onClick={() => setSelectedIds([])}>Clear</button></div>}
-      {bankLoading ? <p className="loading-panel">Searching MCQs…</p> : <div className="mcq-bank-table-wrap"><table className="mcq-bank-table"><thead><tr><th><input type="checkbox" aria-label="Select all MCQs on this page" checked={bankQuestions.length > 0 && bankQuestions.every((item) => selectedIds.includes(item.id))} onChange={(event) => setSelectedIds((current) => event.target.checked ? [...new Set([...current, ...bankQuestions.map((item) => item.id)])] : current.filter((id) => !bankQuestions.some((item) => item.id === id)))} /></th><th>Question</th><th>Category</th><th>Difficulty</th><th>Status</th><th>Actions</th></tr></thead><tbody>{bankQuestions.map((question) => <tr key={question.id}><td><input type="checkbox" aria-label={`Select MCQ ${question.id}`} checked={selectedIds.includes(question.id)} onChange={(event) => toggleSelected(question.id, event.target.checked)} /></td><td><strong>#{question.id} · {question.prompt}</strong><small>{question.sourceNote}</small>{question.status === "rejected" && <small className="form-error">Review: {question.reviewNote || "Please revise this MCQ."}</small>}</td><td>{question.subjectName} › {question.topicName}</td><td>{question.difficulty}</td><td><span className={`admin-status admin-status-${question.status}`}>{question.status}</span></td><td><div className="admin-inline-actions">{(canEditAnyMcqs || (canEditOwnMcqs && String(question.createdBy) === currentUserId && question.status === "draft")) && <button type="button" className="button button-light" onClick={() => editQuestion(question)}>Edit</button>}{canReviewMcqs && question.status === "in_review" && <><button type="button" className="button button-light" onClick={() => { const reviewNote = window.prompt("Review comment?"); if (reviewNote?.trim()) void sessionAction("approve", question, { reviewNote }); }}>Approve</button><button type="button" className="button button-light" onClick={() => { const reviewNote = window.prompt("Reason for rejection?"); if (reviewNote) void adminRequest("/api/admin/questions", "PATCH", { id: question.id, status: "rejected", reviewNote }).then(onUpdated).catch((e) => setError(e.message)); }}>Reject</button></>}{canPublish && question.status === "approved" && <button type="button" className="button button-primary" onClick={() => void sessionAction("publish", question)}>Publish</button>}{canDelete && question.status !== "archived" && <button type="button" className="button button-light" onClick={() => void sessionAction("archive", question)}>Archive</button>}</div></td></tr>)}{!bankQuestions.length && <tr><td colSpan={6}>No MCQs match these filters.</td></tr>}</tbody></table></div>}
+      {bankLoading ? <p className="loading-panel">Searching MCQs…</p> : <div className="mcq-bank-table-wrap"><table className="mcq-bank-table"><thead><tr><th><input type="checkbox" aria-label="Select all MCQs on this page" checked={bankQuestions.length > 0 && bankQuestions.every((item) => selectedIds.includes(item.id))} onChange={(event) => setSelectedIds((current) => event.target.checked ? [...new Set([...current, ...bankQuestions.map((item) => item.id)])] : current.filter((id) => !bankQuestions.some((item) => item.id === id)))} /></th><th>Question</th><th>Category</th><th>Difficulty</th><th>Status</th><th>Actions</th></tr></thead><tbody>{bankQuestions.map((question) => <tr key={question.id}><td><input type="checkbox" aria-label={`Select MCQ ${question.id}`} checked={selectedIds.includes(question.id)} onChange={(event) => toggleSelected(question.id, event.target.checked)} /></td><td><strong>#{question.id} · {question.prompt}</strong><small>{question.sourceNote}</small>{question.status === "rejected" && <small className="form-error">Review: {question.reviewNote || "Please revise this MCQ."}</small>}</td><td>{question.subjectName} › {question.topicName}</td><td>{question.difficulty}</td><td><span className={`admin-status admin-status-${question.status}`}>{question.status}</span></td><td><div className="admin-inline-actions">{(canEditAnyMcqs || (canEditOwnMcqs && String(question.createdBy) === currentUserId && (question.status === "draft" || question.status === "rejected"))) && <button type="button" className="button button-light" onClick={() => editQuestion(question)}>Edit</button>}{canReviewMcqs && question.status === "in_review" && <><button type="button" className="button button-light" onClick={() => { const reviewNote = window.prompt("Review comment?"); if (reviewNote?.trim()) void sessionAction("approve", question, { reviewNote }); }}>Approve</button><button type="button" className="button button-light" onClick={() => { const reviewNote = window.prompt("Reason for rejection?"); if (reviewNote) void adminRequest("/api/admin/questions", "PATCH", { id: question.id, status: "rejected", reviewNote }).then(onUpdated).catch((e) => setError(e.message)); }}>Reject</button></>}{canPublish && question.status === "approved" && <button type="button" className="button button-primary" onClick={() => void sessionAction("publish", question)}>Publish</button>}{canDelete && question.status !== "archived" && <button type="button" className="button button-light" onClick={() => void sessionAction("archive", question)}>Archive</button>}</div></td></tr>)}{!bankQuestions.length && <tr><td colSpan={6}>No MCQs match these filters.</td></tr>}</tbody></table></div>}
       <div className="mcq-bank-pagination"><button type="button" className="button button-light" disabled={bankPage <= 1 || bankLoading} onClick={() => setBankPage((page) => Math.max(1, page - 1))}>← Previous</button><span>Page {bankPage} of {bankPages}</span><button type="button" className="button button-light" disabled={bankPage >= bankPages || bankLoading} onClick={() => setBankPage((page) => Math.min(bankPages, page + 1))}>Next →</button></div>
     </section>}
 
@@ -540,7 +565,7 @@ function SessionList({ questions, topics, papers, selectedPaperId, canManagePape
     {!questions.length ? <p className="admin-empty">Saved questions will appear here.</p> : <div className="mcq-session-table-wrap"><table className="mcq-session-table"><thead><tr><th>ID</th><th>Question</th><th>Category</th><th>Paper links</th><th>Status</th><th>Actions</th></tr></thead><tbody>{questions.map((question) => {
       const attached = question.paperIds.map((id) => papers.find((paper) => paper.id === id)).filter((paper): paper is Paper => Boolean(paper));
       const removable = attached.find((paper) => paper.id === (removePaperIds[question.id] ?? selectedPaperId)) ?? attached[0];
-      return <tr key={question.id} className={question.status === "archived" ? "is-archived" : ""}><td>#{question.id}</td><td><strong>{question.prompt}</strong><small>{question.sourceNote}</small></td><td><select aria-label={`Change category for MCQ ${question.id}`} value={String(question.topicId)} disabled={question.status === "archived" || !(canEditAnyMcqs || (canEditOwnMcqs && String(question.createdBy) === currentUserId && question.status === "draft"))} onChange={(event) => void onAction("change-category", question, { topicId: Number(event.target.value) })}>{topics.filter((topic) => topic.status !== "archived").map((topic) => <option key={topic.id} value={topic.id}>{topic.subject_name} › {topic.name}</option>)}</select></td><td>{attached.length ? <>{attached.length} paper{attached.length === 1 ? "" : "s"}{canManagePapers && <select aria-label={`Select paper to remove MCQ ${question.id} from`} value={String(removePaperIds[question.id] ?? (selectedPaperId && question.paperIds.includes(selectedPaperId) ? selectedPaperId : attached[0].id))} onChange={(event) => setRemovePaperIds({ ...removePaperIds, [question.id]: Number(event.target.value) })}>{attached.map((paper) => <option key={paper.id} value={paper.id}>{paper.title}</option>)}</select>}</> : "—"}</td><td><span className={`admin-status admin-status-${question.status}`}>{question.status}</span></td><td><div className="mcq-row-actions">{(canEditAnyMcqs || (canEditOwnMcqs && String(question.createdBy) === currentUserId && question.status === "draft")) && <button type="button" className="text-link" onClick={() => onEdit(question)}>Edit</button>}{canManagePapers && removable && <button type="button" className="text-link" onClick={() => void onAction("remove-from-paper", question, { paperId: removable.id })}>Remove from paper</button>}{canReviewMcqs && question.status === "in_review" && <><button type="button" className="text-link" onClick={() => { const reviewNote = window.prompt("Review comment?"); if (reviewNote?.trim()) void onAction("approve", question, { reviewNote }); }}>Approve</button><button type="button" className="text-link" onClick={() => { const reviewNote = window.prompt("Reason for rejection?"); if (reviewNote) void adminRequest("/api/admin/questions", "PATCH", { id: question.id, status: "rejected", reviewNote }).then(() => onUpdated()).catch(() => {}); }}>Reject</button></>}{canPublish && question.status === "approved" && <button type="button" className="text-link" onClick={() => void onAction("publish", question)}>Publish</button>}{canCreateMcqs && question.status === "rejected" && <button type="button" className="text-link" onClick={() => void adminRequest("/api/admin/questions", "PATCH", { id: question.id, status: "draft" }).then(onUpdated).catch(() => {})}>Revise rejected MCQ</button>}{canCreateMcqs && question.status === "draft" && <button type="button" className="text-link" onClick={() => void adminRequest("/api/admin/questions", "PATCH", { id: question.id, status: "in_review" }).then(onUpdated).catch(() => {})}>Submit for review</button>}{canDelete && question.status !== "archived" && <button type="button" className="text-link text-danger" onClick={() => void onAction("archive", question)}>Undo (archive)</button>}</div></td></tr>;
+      return <tr key={question.id} className={question.status === "archived" ? "is-archived" : ""}><td>#{question.id}</td><td><strong>{question.prompt}</strong><small>{question.sourceNote}</small></td><td><select aria-label={`Change category for MCQ ${question.id}`} value={String(question.topicId)} disabled={question.status === "archived" || !(canEditAnyMcqs || (canEditOwnMcqs && String(question.createdBy) === currentUserId && (question.status === "draft" || question.status === "rejected")))} onChange={(event) => void onAction("change-category", question, { topicId: Number(event.target.value) })}>{topics.filter((topic) => topic.status !== "archived").map((topic) => <option key={topic.id} value={topic.id}>{topic.subject_name} › {topic.name}</option>)}</select></td><td>{attached.length ? <>{attached.length} paper{attached.length === 1 ? "" : "s"}{canManagePapers && <select aria-label={`Select paper to remove MCQ ${question.id} from`} value={String(removePaperIds[question.id] ?? (selectedPaperId && question.paperIds.includes(selectedPaperId) ? selectedPaperId : attached[0].id))} onChange={(event) => setRemovePaperIds({ ...removePaperIds, [question.id]: Number(event.target.value) })}>{attached.map((paper) => <option key={paper.id} value={paper.id}>{paper.title}</option>)}</select>}</> : "—"}</td><td><span className={`admin-status admin-status-${question.status}`}>{question.status}</span></td><td><div className="mcq-row-actions">{(canEditAnyMcqs || (canEditOwnMcqs && String(question.createdBy) === currentUserId && (question.status === "draft" || question.status === "rejected"))) && <button type="button" className="text-link" onClick={() => onEdit(question)}>Edit</button>}{canManagePapers && removable && <button type="button" className="text-link" onClick={() => void onAction("remove-from-paper", question, { paperId: removable.id })}>Remove from paper</button>}{canReviewMcqs && question.status === "in_review" && <><button type="button" className="text-link" onClick={() => { const reviewNote = window.prompt("Review comment?"); if (reviewNote?.trim()) void onAction("approve", question, { reviewNote }); }}>Approve</button><button type="button" className="text-link" onClick={() => { const reviewNote = window.prompt("Reason for rejection?"); if (reviewNote) void adminRequest("/api/admin/questions", "PATCH", { id: question.id, status: "rejected", reviewNote }).then(() => onUpdated()).catch(() => {}); }}>Reject</button></>}{canPublish && question.status === "approved" && <button type="button" className="text-link" onClick={() => void onAction("publish", question)}>Publish</button>}{canCreateMcqs && question.status === "rejected" && <button type="button" className="text-link" onClick={() => void adminRequest("/api/admin/questions", "PATCH", { id: question.id, status: "draft" }).then(onUpdated).catch(() => {})}>Revise rejected MCQ</button>}{canCreateMcqs && question.status === "draft" && <button type="button" className="text-link" onClick={() => void adminRequest("/api/admin/questions", "PATCH", { id: question.id, status: "in_review" }).then(onUpdated).catch(() => {})}>Submit for review</button>}{canDelete && question.status !== "archived" && <button type="button" className="text-link text-danger" onClick={() => void onAction("archive", question)}>Undo (archive)</button>}</div></td></tr>;
     })}</tbody></table></div>}
   </section>;
 }

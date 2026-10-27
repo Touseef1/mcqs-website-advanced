@@ -130,11 +130,12 @@ All primary content tables use InnoDB and `utf8mb4`. IDs are unsigned auto-incre
 |---|---|---|
 | `subjects` | `id`, `name`, `slug`, `description`, `sort_order`, `status`, timestamps | Top-level categories. One subject has many topics. |
 | `topics` | `id`, `subject_id`, `name`, `slug`, `description`, `sort_order`, `status`, timestamps | Subcategories. `subject_id` references `subjects.id`; one topic has many questions. |
-| `questions` | `id`, `topic_id`, `question_text`, `explanation`, `source_note`, `correct_choice`, `difficulty`, `status`, timestamps | One MCQ belongs to one topic/category and can appear in many past papers. `source_note` is required before publication. |
+| `questions` | `id`, `topic_id`, `question_text`, `explanation`, `source_note`, `correct_choice`, `difficulty`, `status`, `version`, `current_revision_id`, ownership/review fields, timestamps | One MCQ belongs to one topic/category and can appear in many past papers. `source_note` is required before publication. `version` supports optimistic edit locking; `current_revision_id` points to the published content snapshot. |
 | `choices` | `id`, `question_id`, `label`, `choice_text` | The answer options for a question, normally labels A–D. `question_id` references `questions.id`; deleting a question cascades to its choices. |
 | `exams` | `id`, `name`, `slug` | Normalized exam/commission names. One exam can have many papers. |
 | `papers` | `id`, `exam_id`, `title`, `slug`, `year`, `paper_type`, `description`, `status` | A past paper belongs to one exam. Public pages display published papers. |
 | `paper_questions` | `paper_id`, `question_id`, `question_order` | Join table for the many-to-many paper/question relationship. Its primary key prevents the same question being linked twice to one paper; `question_order` stores ordering inside that paper. |
+| `question_revisions` | `id`, `question_id`, `revision_number`, `content_snapshot` JSON, `created_by`, `created_at` | Immutable snapshots of a question and its options. Learner attempt answers link to the revision shown when the quiz was taken. |
 
 ### Learner and administration tables
 
@@ -163,7 +164,8 @@ This table summarizes the MySQL storage types and the most important rules from 
 | `learner_bookmarks` | `learner_id BIGINT UNSIGNED`; `question_id BIGINT UNSIGNED`; `created_at TIMESTAMP` | Composite primary key `(learner_id, question_id)`; both FKs cascade on delete. |
 | `quiz_attempts` | `id BIGINT UNSIGNED`; `learner_id BIGINT UNSIGNED`; `quiz_title VARCHAR(220)`; `quiz_path VARCHAR(260)`; `score SMALLINT UNSIGNED`; `question_count SMALLINT UNSIGNED`; `elapsed_seconds INT UNSIGNED`; `completed_at TIMESTAMP` | FK to learner; index on learner/completion date. |
 | `learner_action_tokens` | Learner ID, SHA-256 token hash, verification/reset purpose, expiry, used timestamp | Single-use email verification and password reset tokens; cascades with learner deletion. |
-| `quiz_attempt_answers` | Attempt, learner, question/topic IDs, selected/correct choices, correctness flag | Stores answer review and supports weak-topic estimates; one row per question per attempt. |
+| `quiz_attempt_answers` | Attempt, learner, question/topic IDs, selected/correct choices, correctness flag, nullable `question_revision_id` | Stores answer review and supports weak-topic estimates; the revision link preserves the exact question/options version. One row per question per attempt. |
+| `question_revisions` | `id`, `question_id`, `revision_number`, JSON content snapshot, nullable creator, timestamp | Stores the published question and options snapshot used to preserve historical quiz results. |
 | `api_rate_limit_buckets` | Hashed scope/IP key, window start, hit count | Shared fixed-window counts for sensitive APIs. |
 
 ### Relationship diagram
@@ -213,7 +215,7 @@ Typical content workflow:
 
 ### Fast MCQ entry workflow
 
-The Questions section uses `components/AdminQuestionWorkspace.tsx`. It keeps the category, paper, difficulty, and editable source note in a sticky context bar while the admin adds questions. The context is stored in browser `localStorage`; the session's recent MCQ IDs and count are stored in `sessionStorage`. Selecting a paper pre-fills the source note and automatically includes that paper on each new question. Choosing no paper creates a question without a paper link.
+The Questions section uses `components/AdminQuestionWorkspace.tsx`. It keeps the category, paper, difficulty, and editable source note in a sticky context bar while the admin adds questions. The context is stored in browser `localStorage`; the session's recent MCQ IDs and count are stored in `sessionStorage`. Selecting a paper pre-fills the source note and automatically includes that paper on each new question. Choosing no paper creates a question without a paper link. Data Entry can attach a question with `paper.add_questions`; the inline `+ New paper` action is shown only to roles with `paper.quickcreate`.
 
 The fast-entry form contains a question, four choices, one correct-choice radio button, and an optional explanation. `Save & Add Next` (also Ctrl+Enter) creates a draft, clears only those question fields, keeps the context, updates the session list/counter, and focuses the question field. `Save & Close` saves and returns to the MCQ bank. The server validates the required category and source note, four non-empty distinct options, and a correct choice. A same-topic similarity check displays a warning but does not block saving.
 
@@ -221,7 +223,7 @@ The session list provides inline edit, category change, remove-from-paper, publi
 
 From the Past Papers section, `Add MCQs to this paper` opens the same fast-entry screen with its paper selected. Paper question ordering supports drag-and-drop and existing up/down controls. Reordering locks the paper's link rows, temporarily assigns negative order values to avoid collisions with the unique `(paper_id, question_order)` index, then writes contiguous positive values in the same transaction.
 
-No table or column changes are required for this workflow. It uses the existing `questions`, `choices`, `papers`, `exams`, and `paper_questions` schema. Question creation plus choice and optional paper-link inserts, bulk imports, category changes, paper link changes, and reordering use transactions where needed. All API inputs remain parameterized, and the server-side role checks remain authoritative.
+The base workflow uses `questions`, `choices`, `papers`, `exams`, and `paper_questions`. Migration 008 adds `questions.version`, revision snapshots in `question_revisions`, and nullable revision links on `quiz_attempt_answers`. Question creation plus choices and paper links, history snapshots, bulk imports/actions, and paper reordering use transactions. APIs use a shared state machine in `lib/admin-workflow.ts`, enforce role and ownership checks server-side, and reject stale MCQ updates using `expectedVersion`.
 
 ## 7. API endpoint reference
 
@@ -278,7 +280,7 @@ Required environment values are documented in `.env.example`:
 | `NEXT_PUBLIC_SITE_URL` | Canonical public site origin; use the production HTTPS URL on deployment |
 | `RESEND_API_KEY`, `RESEND_FROM` | Email delivery for learner verification and password resets; `RESEND_FROM` must be a verified sender. In development without a key, links are logged to the server console. |
 
-Apply migrations `001` through `007` in the order documented in [MIGRATIONS.md](./MIGRATIONS.md). Migration `004` restores the missing migration number and adds paper metadata. Migration `005` removes old generated practice content and adds source-reference requirements for questions. `sql/seed.sql` is optional starter data; do not treat sample rows as official exam papers.
+Apply migrations `001` through `008` in the order documented in [MIGRATIONS.md](./MIGRATIONS.md). Migration `004` restores the missing migration number and adds paper metadata. Migration `005` removes old generated practice content and adds source-reference requirements for questions. Migration `008` adds question versioning and learner-history snapshots. `sql/seed.sql` is optional starter data; do not treat sample rows as official exam papers.
 
 Common project commands:
 
@@ -291,7 +293,7 @@ npm run build
 
 ## 10. Important implementation rules
 
-1. Keep `correct_choice` out of public quiz props. Grade submissions in the server data layer.
+1. Keep `correct_choice` out of public quiz props. Grade submissions in the server data layer and save the published revision id for learner history.
 2. Do not build SQL by concatenating user input. Use prepared statements and validate IDs/status values.
 3. Use transactions when a single user action writes multiple related rows.
 4. Preserve the `paper_questions` relationship when editing an MCQ category; changing `topic_id` must not duplicate or detach the question.
@@ -299,6 +301,8 @@ npm run build
 6. Archive content instead of hard-deleting content that may be referenced by a paper or learner activity.
 7. Revalidate cache tags after content updates, especially `subjects`, `topics`, `questions`, and `papers`.
 8. Never commit real database passwords, admin passwords, or session secrets. Keep them in local/deployment environment configuration.
+
+Question transitions are defined once in `lib/admin-workflow.ts`: `draft → in_review → approved → published`, with rejection returning to the owner's draft and `archived` terminal. Every API status update and bulk status action validates this state machine. Editing approved or published content resets it to `in_review` unless an Admin or Super Admin explicitly overrides that reset; the override is audited. Self-approval and self-publishing are blocked except for Super Admin, with an audit marker. If a status change or edit would remove a question from a published paper, the API returns the affected papers and requires explicit confirmation. Bulk operations cap at 200 rows and roll back as a unit if any row fails.
 
 ## 11. Exam administration and paper metadata
 

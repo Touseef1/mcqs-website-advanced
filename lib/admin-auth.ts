@@ -9,18 +9,19 @@ export type AdminRole = "super_admin" | "admin" | "data_entry" | "reviewer" | "p
 export type AdminPermission =
   | "content:view" | "mcq.create" | "mcq.edit_own" | "mcq.edit_any" | "mcq.review" | "mcq.publish" | "mcq.archive"
   | "category.manage" | "paper.manage" | "paper.publish" | "user.manage" | "super_admin.manage" | "system.settings"
+  | "paper.add_questions" | "paper.quickcreate"
   // Legacy keys remain accepted temporarily so every existing route is covered during rollout.
   | "questions:manage" | "categories:manage" | "papers:manage" | "content:publish" | "content:delete" | "users:manage";
 export type AdminPrincipal = { id: string; name: string; email: string; role: AdminRole; mustChangePassword?: boolean; permissionOverrides?: Record<string, boolean> };
-export type AdminCapabilities = { manageQuestions: boolean; manageCategories: boolean; managePapers: boolean; publishContent: boolean; deleteContent: boolean; manageUsers: boolean; createMcqs: boolean; reviewMcqs: boolean; editOwnMcqs: boolean; editAnyMcqs: boolean };
+export type AdminCapabilities = { manageQuestions: boolean; manageCategories: boolean; managePapers: boolean; addQuestionsToPapers: boolean; quickCreatePapers: boolean; publishContent: boolean; deleteContent: boolean; manageUsers: boolean; createMcqs: boolean; reviewMcqs: boolean; editOwnMcqs: boolean; editAnyMcqs: boolean };
 
 /** The single source of truth for role grants. */
 export const ROLE_PERMISSIONS: Record<AdminRole, readonly AdminPermission[]> = {
-  super_admin: ["content:view", "mcq.create", "mcq.edit_own", "mcq.edit_any", "mcq.review", "mcq.publish", "mcq.archive", "category.manage", "paper.manage", "paper.publish", "user.manage", "super_admin.manage", "system.settings"],
-  admin: ["content:view", "mcq.create", "mcq.edit_own", "mcq.edit_any", "mcq.review", "mcq.publish", "mcq.archive", "category.manage", "paper.manage", "paper.publish", "user.manage"],
-  data_entry: ["content:view", "mcq.create", "mcq.edit_own"],
+  super_admin: ["content:view", "mcq.create", "mcq.edit_own", "mcq.edit_any", "mcq.review", "mcq.publish", "mcq.archive", "category.manage", "paper.manage", "paper.publish", "paper.add_questions", "paper.quickcreate", "user.manage", "super_admin.manage", "system.settings"],
+  admin: ["content:view", "mcq.create", "mcq.edit_own", "mcq.edit_any", "mcq.review", "mcq.publish", "mcq.archive", "category.manage", "paper.manage", "paper.publish", "paper.add_questions", "paper.quickcreate", "user.manage"],
+  data_entry: ["content:view", "mcq.create", "mcq.edit_own", "paper.add_questions"],
   reviewer: ["content:view", "mcq.edit_any", "mcq.review"],
-  publisher: ["content:view", "mcq.publish", "paper.manage", "paper.publish"],
+  publisher: ["content:view", "mcq.publish", "paper.manage", "paper.publish", "paper.add_questions", "paper.quickcreate"],
 };
 const aliases: Partial<Record<AdminPermission, AdminPermission>> = {
   "questions:manage": "mcq.create", "categories:manage": "category.manage", "papers:manage": "paper.manage",
@@ -89,7 +90,7 @@ export function requirePermission(principal: AdminPrincipal, permission: AdminPe
 }
 export function hasPermission(principal: AdminPrincipal, permission: AdminPermission) { return requirePermission(principal, permission); }
 export function getAdminCapabilities(principal: AdminPrincipal): AdminCapabilities {
-  return { manageQuestions: hasPermission(principal, "mcq.create") || hasPermission(principal, "mcq.edit_any") || hasPermission(principal, "mcq.publish"), manageCategories: hasPermission(principal, "category.manage"), managePapers: hasPermission(principal, "paper.manage"), publishContent: hasPermission(principal, "mcq.publish"), deleteContent: hasPermission(principal, "mcq.archive"), manageUsers: hasPermission(principal, "user.manage"), createMcqs: hasPermission(principal, "mcq.create"), reviewMcqs: hasPermission(principal, "mcq.review"), editOwnMcqs: hasPermission(principal, "mcq.edit_own"), editAnyMcqs: hasPermission(principal, "mcq.edit_any") };
+  return { manageQuestions: hasPermission(principal, "mcq.create") || hasPermission(principal, "mcq.edit_any") || hasPermission(principal, "mcq.publish"), manageCategories: hasPermission(principal, "category.manage"), managePapers: hasPermission(principal, "paper.manage"), addQuestionsToPapers: hasPermission(principal, "paper.add_questions"), quickCreatePapers: hasPermission(principal, "paper.quickcreate"), publishContent: hasPermission(principal, "mcq.publish"), deleteContent: hasPermission(principal, "mcq.archive"), manageUsers: hasPermission(principal, "user.manage"), createMcqs: hasPermission(principal, "mcq.create"), reviewMcqs: hasPermission(principal, "mcq.review"), editOwnMcqs: hasPermission(principal, "mcq.edit_own"), editAnyMcqs: hasPermission(principal, "mcq.edit_any") };
 }
 export const ADMIN_ROLES: Array<{ value: AdminRole; label: string }> = [
   { value: "data_entry", label: "Data Entry" }, { value: "reviewer", label: "Reviewer" }, { value: "publisher", label: "Publisher" }, { value: "admin", label: "Admin" }, { value: "super_admin", label: "Super Admin" },

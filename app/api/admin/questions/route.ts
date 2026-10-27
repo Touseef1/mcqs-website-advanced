@@ -2,7 +2,7 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import type { RowDataPacket } from "mysql2";
 import { getAdminPrincipal, requirePermission } from "@/lib/admin-auth";
-import { requestedStatus } from "@/lib/admin-content";
+import { canActorEditQuestion, canActorTransition, getQuestionTransition, isSelfApproval, statusAfterQuestionEdit, type QuestionStatus } from "@/lib/admin-workflow";
 import { db, hasDatabase } from "@/lib/db";
 import { auditAdmin } from "@/lib/admin-security";
 
@@ -105,9 +105,10 @@ export async function GET(request: Request) {
   const [countRows] = await db.execute<Array<RowDataPacket & { total: number }>>(`SELECT COUNT(*) AS total ${from} ${where}`, values);
   const total = Number(countRows[0]?.total ?? 0);
   const offset = (page - 1) * pageSize;
-  const [questions] = await db.execute<Array<RowDataPacket & { id: number; topic_id: number; topic_name: string; subject_name: string; prompt: string; explanation: string; source_note: string; correct_choice: string; difficulty: string; status: string; review_note: string | null; created_by: number | null; updated_at: string; question_image_url: string | null }>>(
+  const [questions] = await db.execute<Array<RowDataPacket & { id: number; topic_id: number; topic_name: string; subject_name: string; prompt: string; explanation: string; source_note: string; correct_choice: string; difficulty: string; status: string; review_note: string | null; created_by: number | null; updated_at: string; question_image_url: string | null; version: number }>>(
     `SELECT q.id, q.topic_id, t.name AS topic_name, s.name AS subject_name,
             q.question_text AS prompt, q.explanation, q.source_note, q.correct_choice, q.difficulty, q.status, q.review_note, q.created_by, q.updated_at, q.question_image_url
+            , q.version
      ${from} ${where}
      ORDER BY q.updated_at DESC, q.id DESC LIMIT ? OFFSET ?`,
     [...values, pageSize, offset],
@@ -137,7 +138,7 @@ export async function GET(request: Request) {
   return NextResponse.json({ questions: orderedQuestions.map((question) => ({
     id: question.id, topicId: question.topic_id, topicName: question.topic_name, subjectName: question.subject_name,
     prompt: question.prompt, explanation: question.explanation, sourceNote: question.source_note, correctChoice: question.correct_choice, questionImageUrl: question.question_image_url,
-    difficulty: question.difficulty, status: question.status, reviewNote: question.review_note, createdBy: question.created_by, paperIds: paperIdMap.get(question.id) ?? [],
+    difficulty: question.difficulty, status: question.status, version: question.version, reviewNote: question.review_note, createdBy: question.created_by, paperIds: paperIdMap.get(question.id) ?? [],
     choices: choiceMap.get(question.id) ?? [],
   })), total, page, pageSize }, { headers: { "Cache-Control": "no-store" } });
 }
@@ -151,7 +152,7 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   const parsed = parseQuestion(body);
   if (!parsed) return NextResponse.json({ error: "Add a source reference and check the topic, question, four choices, correct answer, and explanation." }, { status: 400 });
-  if (parsed.paperIds !== undefined && !requirePermission(principal, "paper.manage")) return NextResponse.json({ error: "Your role cannot assign questions to past papers." }, { status: 403 });
+  if (parsed.paperIds !== undefined && !requirePermission(principal, "paper.add_questions")) return NextResponse.json({ error: "Your role cannot add questions to past papers." }, { status: 403 });
   const status = "draft" as const;
   const connection = await db.getConnection();
   let questionId = 0;
@@ -201,121 +202,149 @@ export async function PATCH(request: Request) {
   const id = Number(body?.id);
   if (!Number.isInteger(id) || id < 1) return NextResponse.json({ error: "Choose a valid question." }, { status: 400 });
 
-  if (["draft", "in_review", "approved", "rejected"].includes(String(body?.status))) {
-    const target = String(body.status);
-    const [rows] = await db.execute<Array<RowDataPacket & { status: string; created_by: number | null }>>("SELECT status, created_by FROM questions WHERE id = ? LIMIT 1", [id]);
-    const item = rows[0];
-    if (!item) return NextResponse.json({ error: "Question not found." }, { status: 404 });
-    if (target === "draft") {
-      if (!requirePermission(principal, "mcq.edit_own") || String(item.created_by) !== principal.id || item.status !== "rejected") return NextResponse.json({ error: "Only the author can reopen their own rejected MCQ." }, { status: 403 });
-      await db.execute("UPDATE questions SET status = 'draft', updated_by = ? WHERE id = ?", [principal.id, id]);
-      await auditAdmin(principal, request, "reopen_rejected", "question", id, { status: item.status }, { status: "draft", reviewNote: body.reviewNote ?? null });
-    } else if (target === "in_review") {
-      if (!requirePermission(principal, "mcq.edit_own") || String(item.created_by) !== principal.id || item.status !== "draft") return NextResponse.json({ error: "Only the author can submit their own draft for review." }, { status: 403 });
-      await db.execute("UPDATE questions SET status = 'in_review', updated_by = ? WHERE id = ?", [principal.id, id]);
-      await auditAdmin(principal, request, "submit_for_review", "question", id, { status: item.status }, { status: target });
-    } else {
-      if (!requirePermission(principal, "mcq.review") || item.status !== "in_review") return NextResponse.json({ error: "Only reviewers can decide submitted MCQs." }, { status: 403 });
-      const note = typeof body.reviewNote === "string" ? body.reviewNote.trim() : "";
-      if (!note) return NextResponse.json({ error: "Add a review comment when approving or rejecting an MCQ." }, { status: 400 });
-      await db.execute("UPDATE questions SET status = ?, reviewed_by = ?, reviewed_at = NOW(), review_note = ?, updated_by = ? WHERE id = ?", [target, principal.id, note || null, principal.id, id]);
-      await auditAdmin(principal, request, target, "question", id, { status: item.status }, { status: target, reviewNote: note || null });
-    }
+  if (typeof body?.status === "string") {
+    const target = body.status as QuestionStatus;
+    const transition = getQuestionTransition("draft", target); // Validate target before reading the locked source status.
+    if (!transition && !["in_review", "approved", "published", "rejected", "draft", "archived"].includes(target)) return NextResponse.json({ error: "Unknown question status." }, { status: 400 });
+    const connection = await db.getConnection();
+    let auditOld: Record<string, unknown> | null = null;
+    let auditNew: Record<string, unknown> | null = null;
+    try {
+      await connection.beginTransaction();
+      const [rows] = await connection.execute<Array<RowDataPacket & { status: QuestionStatus; created_by: number | null; source_note: string; topic_status: string; subject_status: string; version: number }>>(
+        `SELECT q.status, q.created_by, q.source_note, q.version, t.status AS topic_status, s.status AS subject_status
+         FROM questions q JOIN topics t ON t.id = q.topic_id JOIN subjects s ON s.id = t.subject_id WHERE q.id = ? FOR UPDATE`, [id],
+      );
+      const item = rows[0];
+      if (!item) { await connection.rollback(); return NextResponse.json({ error: "Question not found." }, { status: 404 }); }
+      const allowed = getQuestionTransition(item.status, target);
+      if (!allowed) { await connection.rollback(); return NextResponse.json({ error: `Illegal question transition: ${item.status} → ${target}.` }, { status: 409 }); }
+      if (!canActorTransition(principal, item.created_by, item.status, target, (permission) => requirePermission(principal, permission))) { await connection.rollback(); return NextResponse.json({ error: isSelfApproval(principal, item.created_by, target) ? "You cannot approve or publish your own MCQ." : `Your role or ownership does not allow you to ${allowed.action} this MCQ.` }, { status: 403 }); }
+      const note = typeof body.reviewNote === "string" ? body.reviewNote.trim().slice(0, 2000) : "";
+      if ((target === "approved" || target === "rejected") && !note) { await connection.rollback(); return NextResponse.json({ error: "Add a review comment when approving or rejecting an MCQ." }, { status: 400 }); }
+      if (target === "published" && (!item.source_note.trim() || item.topic_status !== "published" || item.subject_status !== "published")) { await connection.rollback(); return NextResponse.json({ error: "Add a source and publish the subject and topic before publishing this MCQ." }, { status: 400 }); }
+      const [affected] = ["archived", "in_review"].includes(target) ? await connection.execute<Array<RowDataPacket & { id: number; title: string; slug: string }>>(
+        `SELECT p.id, p.title, p.slug FROM paper_questions pq JOIN papers p ON p.id = pq.paper_id WHERE pq.question_id = ? AND p.status = 'published' FOR UPDATE`, [id],
+      ) : [[] as Array<RowDataPacket & { id: number; title: string; slug: string }>];
+      if (affected.length && body.confirmPaperRemoval !== true) { await connection.rollback(); return NextResponse.json({ error: "This MCQ is in published papers. Confirm removal before changing its status.", affectedPapers: affected }, { status: 409 }); }
+      if (affected.length) await connection.execute("DELETE FROM paper_questions WHERE question_id = ? AND paper_id IN (SELECT id FROM papers WHERE status = 'published')", [id]);
+      let revisionId: number | null = null;
+      if (target === "published") revisionId = await saveQuestionRevision(connection, id, principal.id);
+      await connection.execute(
+        `UPDATE questions SET status = ?, updated_by = ?, version = version + 1,
+         reviewed_by = IF(? IN ('approved','rejected'), ?, reviewed_by),
+         reviewed_at = IF(? IN ('approved','rejected'), UTC_TIMESTAMP(), reviewed_at),
+         review_note = IF(? IN ('approved','rejected'), ?, IF(? = 'draft', NULL, review_note)),
+         current_revision_id = COALESCE(?, current_revision_id) WHERE id = ?`,
+        [target, principal.id, target, principal.id, target, target, target, note || null, target, revisionId, id],
+      );
+      auditOld = { status: item.status, version: item.version };
+      auditNew = { status: target, reviewNote: note || null, selfApprovalOverride: principal.role === "super_admin" && isSelfApproval(principal, item.created_by, target), removedFromPublishedPapers: affected.map((paper) => paper.id) };
+      await connection.commit();
+    } catch (cause) { await connection.rollback(); console.error("Question transition failed", cause); return NextResponse.json({ error: "The status change failed; no changes were saved." }, { status: 500 }); }
+    finally { connection.release(); }
+    await auditAdmin(principal, request, target, "question", id, auditOld, auditNew);
     refreshQuestions();
-    return NextResponse.json({ ok: true });
-  }
-  if (body?.status === "published" || body?.status === "archived") {
-    const permission = body.status === "published" ? "mcq.publish" : "mcq.archive";
-    if (!requirePermission(principal, permission)) return NextResponse.json({ error: body.status === "published" ? "Only Paper Managers and Super Admins can publish questions." : "Only the Super Admin can archive questions." }, { status: 403 });
-    const status = body.status;
-    const [current] = await db.execute<Array<RowDataPacket & { id: number; topic_status: string; subject_status: string; source_note: string; status: string }>>(
-      `SELECT q.id, t.status AS topic_status, s.status AS subject_status, q.source_note, q.status
-       FROM questions q JOIN topics t ON t.id = q.topic_id JOIN subjects s ON s.id = t.subject_id
-       WHERE q.id = ? LIMIT 1`, [id],
-    );
-    if (!current[0]) return NextResponse.json({ error: "Question not found." }, { status: 404 });
-    if (status === "published") {
-      const [state] = await db.execute<Array<RowDataPacket & { status: string }>>("SELECT status FROM questions WHERE id = ?", [id]);
-      if (state[0]?.status !== "approved") return NextResponse.json({ error: "Only approved MCQs can be published." }, { status: 403 });
-    }
-    if (status === "published" && !current[0].source_note.trim()) return NextResponse.json({ error: "Add the exam and source reference before publishing this MCQ." }, { status: 400 });
-    if (status === "published" && (current[0].topic_status !== "published" || current[0].subject_status !== "published")) {
-      return NextResponse.json({ error: "Publish its subject and topic before publishing this question." }, { status: 400 });
-    }
-    const sql = status === "published"
-      ? `UPDATE questions q JOIN topics t ON t.id = q.topic_id JOIN subjects s ON s.id = t.subject_id
-         SET q.status = 'published', q.updated_by = ? WHERE q.id = ? AND t.status = 'published' AND s.status = 'published'`
-      : "UPDATE questions SET status = 'archived', updated_by = ? WHERE id = ?";
-    await db.execute(sql, [principal.id, id]);
-    await auditAdmin(principal, request, status, "question", id, { status: current[0].status }, { status });
-    refreshQuestions();
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, status: target });
   }
 
   if (!requirePermission(principal, "mcq.edit_any") && !requirePermission(principal, "mcq.edit_own")) return NextResponse.json({ error: "Your role cannot edit questions." }, { status: 403 });
   const parsed = parseQuestion(body);
-  if (!parsed) return NextResponse.json({ error: "Add a source reference and check the topic, question, four choices, correct answer, and explanation." }, { status: 400 });
-  if (parsed.paperIds !== undefined && !requirePermission(principal, "paper.manage")) return NextResponse.json({ error: "Your role cannot assign questions to past papers." }, { status: 403 });
-  const status = requestedStatus(body?.status, principal);
+  if (!parsed) return NextResponse.json({ error: "Check the topic, question, four distinct choices, correct answer, and explanation." }, { status: 400 });
+  if (parsed.paperIds !== undefined && !requirePermission(principal, "paper.add_questions")) return NextResponse.json({ error: "Your role cannot add questions to past papers." }, { status: 403 });
+  const expectedVersion = Number(body?.expectedVersion);
+  if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 1) return NextResponse.json({ error: "Refresh this MCQ before editing; its version is missing." }, { status: 428 });
+  const keepStatus = body?.keepStatus === true;
+  if (keepStatus && principal.role !== "admin" && principal.role !== "super_admin") return NextResponse.json({ error: "Only an Admin or Super Admin can override the review reset." }, { status: 403 });
   const connection = await db.getConnection();
+  let oldStatus: QuestionStatus = "draft";
+  let newStatus: QuestionStatus = "draft";
+  let revisionId: number | null = null;
+  let affectedPapers: Array<{ id: number; title: string; slug: string }> = [];
   try {
     await connection.beginTransaction();
-    const [existing] = await connection.execute<Array<RowDataPacket & { id: number; status: string; created_by: number | null }>>("SELECT id, status, created_by FROM questions WHERE id = ? LIMIT 1 FOR UPDATE", [id]);
-    if (!existing[0]) {
-      await connection.rollback();
-      return NextResponse.json({ error: "Question not found." }, { status: 404 });
-    }
-    if (!requirePermission(principal, "mcq.edit_any") && !(requirePermission(principal, "mcq.edit_own") && String(existing[0].created_by) === principal.id && existing[0].status === "draft")) {
-      await connection.rollback();
-      return NextResponse.json({ error: "Your role can edit draft questions only." }, { status: 403 });
+    const [existingRows] = await connection.execute<Array<RowDataPacket & { id: number; status: QuestionStatus; created_by: number | null; version: number; correct_choice: string; question_text: string; explanation: string; source_note: string; question_image_url: string | null }>>(
+      "SELECT id, status, created_by, version, correct_choice, question_text, explanation, source_note, question_image_url FROM questions WHERE id = ? FOR UPDATE", [id],
+    );
+    const existing = existingRows[0];
+    if (!existing) { await connection.rollback(); return NextResponse.json({ error: "Question not found." }, { status: 404 }); }
+    if (existing.version !== expectedVersion) { await connection.rollback(); return NextResponse.json({ error: "This MCQ changed since you opened it. Reload it and apply your changes again.", currentVersion: existing.version }, { status: 409 }); }
+    if (!canActorEditQuestion(principal, existing.created_by, existing.status, requirePermission(principal, "mcq.edit_any"), requirePermission(principal, "mcq.edit_own"))) { await connection.rollback(); return NextResponse.json({ error: "Data Entry can edit only its own draft or rejected MCQs." }, { status: 403 }); }
+    oldStatus = existing.status;
+    newStatus = statusAfterQuestionEdit(existing.status, keepStatus) as QuestionStatus;
+    if (newStatus !== existing.status) {
+      const editTransition = getQuestionTransition(existing.status, newStatus);
+      if (!editTransition || !requirePermission(principal, editTransition.permission)) { await connection.rollback(); return NextResponse.json({ error: `Your role cannot move this MCQ from ${existing.status} to ${newStatus}.` }, { status: 403 }); }
     }
     const [topic] = await connection.execute<Array<RowDataPacket & { id: number }>>(
-      `SELECT t.id FROM topics t JOIN subjects s ON s.id = t.subject_id
-       WHERE t.id = ? AND t.status != 'archived' AND s.status != 'archived'
-         AND (? != 'published' OR (t.status = 'published' AND s.status = 'published'))`,
-      [parsed.topicId, status],
+      "SELECT t.id FROM topics t JOIN subjects s ON s.id = t.subject_id WHERE t.id = ? AND t.status != 'archived' AND s.status != 'archived'", [parsed.topicId],
     );
-    if (!topic[0]) {
-      await connection.rollback();
-      return NextResponse.json({ error: "Choose a valid topic. Published questions need a published topic." }, { status: 400 });
+    if (!topic[0]) { await connection.rollback(); return NextResponse.json({ error: "Choose an active topic." }, { status: 400 }); }
+    if (parsed.paperIds && !await validatePaperIds(connection, parsed.paperIds)) { await connection.rollback(); return NextResponse.json({ error: "Choose active papers. Archived papers cannot receive MCQs." }, { status: 400 }); }
+    const [oldChoices] = await connection.execute<Array<RowDataPacket & { label: string; choice_text: string; image_url: string | null }>>("SELECT label, choice_text, image_url FROM choices WHERE question_id = ? ORDER BY label FOR UPDATE", [id]);
+    const choiceChanged = existing.correct_choice !== parsed.correctChoice || oldChoices.some((choice, index) => choice.choice_text !== parsed.choices[index]);
+    if (existing.status === "published" && choiceChanged) {
+      revisionId = await saveQuestionRevision(connection, id, principal.id, { questionText: existing.question_text, explanation: existing.explanation, sourceNote: existing.source_note, correctChoice: existing.correct_choice, questionImageUrl: existing.question_image_url, choices: oldChoices });
+      await connection.execute("UPDATE quiz_attempt_answers SET question_revision_id = ? WHERE question_id = ? AND question_revision_id IS NULL", [revisionId, id]);
     }
-    if (parsed.paperIds && !await validatePaperIds(connection, parsed.paperIds)) {
-      await connection.rollback();
-      return NextResponse.json({ error: "Choose active past papers. Archived papers cannot receive MCQs." }, { status: 400 });
+    if (newStatus !== "published") {
+      const [papers] = await connection.execute<Array<RowDataPacket & { id: number; title: string; slug: string }>>(
+        "SELECT p.id, p.title, p.slug FROM paper_questions pq JOIN papers p ON p.id = pq.paper_id WHERE pq.question_id = ? AND p.status = 'published' FOR UPDATE", [id],
+      );
+      affectedPapers = papers;
+      if (papers.length && body?.confirmPaperRemoval !== true) { await connection.rollback(); return NextResponse.json({ error: "This edit moves the MCQ out of published status. Confirm removal from these published papers.", affectedPapers: papers }, { status: 409 }); }
+      if (papers.length) await connection.execute("DELETE FROM paper_questions WHERE question_id = ? AND paper_id IN (SELECT id FROM papers WHERE status = 'published')", [id]);
     }
     await connection.execute(
-      "UPDATE questions SET topic_id = ?, question_text = ?, explanation = ?, source_note = ?, question_image_url = ?, correct_choice = ?, difficulty = ?, updated_by = ? WHERE id = ?",
-      [parsed.topicId, parsed.prompt, parsed.explanation, parsed.sourceNote, parsed.questionImageUrl, parsed.correctChoice, parsed.difficulty, principal.id, id],
+      "UPDATE questions SET topic_id = ?, question_text = ?, explanation = ?, source_note = ?, question_image_url = ?, correct_choice = ?, difficulty = ?, status = ?, review_note = IF(? = 'draft', NULL, review_note), updated_by = ?, version = version + 1 WHERE id = ? AND version = ?",
+      [parsed.topicId, parsed.prompt, parsed.explanation, parsed.sourceNote, parsed.questionImageUrl, parsed.correctChoice, parsed.difficulty, newStatus, newStatus, principal.id, id, expectedVersion],
     );
     await connection.execute("DELETE FROM choices WHERE question_id = ?", [id]);
-    for (let index = 0; index < labels.length; index++) {
-      await connection.execute("INSERT INTO choices (question_id, label, choice_text, image_url) VALUES (?, ?, ?, ?)", [id, labels[index], parsed.choices[index], parsed.choiceImageUrls[index]]);
-    }
+    for (let index = 0; index < labels.length; index++) await connection.execute("INSERT INTO choices (question_id, label, choice_text, image_url) VALUES (?, ?, ?, ?)", [id, labels[index], parsed.choices[index], parsed.choiceImageUrls[index]]);
     if (parsed.paperIds) await syncQuestionPapers(connection, id, parsed.paperIds);
+    if (newStatus === "published" && existing.status === "published" && choiceChanged) {
+      const nextRevision = await saveQuestionRevision(connection, id, principal.id, { questionText: parsed.prompt, explanation: parsed.explanation, sourceNote: parsed.sourceNote, correctChoice: parsed.correctChoice, questionImageUrl: parsed.questionImageUrl, choices: labels.map((label, index) => ({ label, choice_text: parsed.choices[index], image_url: parsed.choiceImageUrls[index] })) });
+      await connection.execute("UPDATE questions SET current_revision_id = ? WHERE id = ?", [nextRevision, id]);
+    }
     await connection.commit();
-  } catch (error) {
-    await connection.rollback();
-    console.error("Admin question update failed", error);
-    return NextResponse.json({ error: "The question could not be updated." }, { status: 500 });
-  } finally {
-    connection.release();
-  }
-  await auditAdmin(principal, request, "update", "question", id, null, { topicId: parsed.topicId });
+  } catch (cause) { await connection.rollback(); console.error("Admin question update failed", cause); return NextResponse.json({ error: "The question could not be updated; no changes were saved." }, { status: 500 }); }
+  finally { connection.release(); }
+  await auditAdmin(principal, request, "update", "question", id, { status: oldStatus, version: expectedVersion }, { status: newStatus, topicId: parsed.topicId, revisionId, adminStatusOverride: keepStatus && (principal.role === "admin" || principal.role === "super_admin"), removedFromPublishedPapers: affectedPapers.map((paper) => paper.id) });
   refreshQuestions();
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, status: newStatus, version: expectedVersion + 1 });
 }
 
 export async function DELETE(request: Request) {
   const csrf = csrfFailure(request);
   if (csrf) return csrf;
   const principal = await getAdminPrincipal();
-  if (!principal || !requirePermission(principal, "mcq.archive")) return NextResponse.json({ error: "Only the Super Admin can archive questions." }, { status: 403 });
+  if (!principal || !requirePermission(principal, "mcq.archive")) return NextResponse.json({ error: "Your role cannot archive questions." }, { status: 403 });
   if (!hasDatabase || !db) return noDatabase();
   const body = await request.json().catch(() => null);
   const id = Number(body?.id);
   if (!Number.isInteger(id) || id < 1) return NextResponse.json({ error: "Choose a valid question." }, { status: 400 });
-  await db.execute("UPDATE questions SET status = 'archived', updated_by = ? WHERE id = ?", [principal.id, id]);
-  await auditAdmin(principal, request, "archive", "question", id, null, { status: "archived" });
-  refreshQuestions();
-  return NextResponse.json({ ok: true });
+  const [rows] = await db.execute<Array<RowDataPacket & { status: QuestionStatus }>>("SELECT status FROM questions WHERE id = ?", [id]);
+  const current = rows[0];
+  if (!current) return NextResponse.json({ error: "Question not found." }, { status: 404 });
+  const transition = getQuestionTransition(current.status, "archived");
+  if (!transition || !requirePermission(principal, transition.permission)) return NextResponse.json({ error: `Illegal question transition: ${current.status} → archived.` }, { status: 409 });
+  const redirect = new Request(request.url, { method: "PATCH", headers: request.headers, body: JSON.stringify({ ...body, status: "archived" }) });
+  return PATCH(redirect);
+}
+
+async function saveQuestionRevision(connection: import("mysql2/promise").PoolConnection, questionId: number, adminId: string, override?: Record<string, unknown>) {
+  let snapshot = override;
+  if (!snapshot) {
+    const [questions] = await connection.execute<Array<RowDataPacket & { question_text: string; explanation: string; source_note: string; correct_choice: string; question_image_url: string | null }>>(
+      "SELECT question_text, explanation, source_note, correct_choice, question_image_url FROM questions WHERE id = ?", [questionId],
+    );
+    const [choices] = await connection.execute<Array<RowDataPacket & { label: string; choice_text: string; image_url: string | null }>>("SELECT label, choice_text, image_url FROM choices WHERE question_id = ? ORDER BY label", [questionId]);
+    snapshot = { ...questions[0], choices };
+  }
+  const [countRows] = await connection.execute<Array<RowDataPacket & { revision_count: number }>>("SELECT COUNT(*) AS revision_count FROM question_revisions WHERE question_id = ?", [questionId]);
+  const [insert] = await connection.execute(
+    "INSERT INTO question_revisions (question_id, revision_number, content_snapshot, created_by) VALUES (?, ?, ?, ?)",
+    [questionId, Number(countRows[0]?.revision_count ?? 0) + 1, JSON.stringify(snapshot), adminId],
+  );
+  return Number((insert as { insertId: number }).insertId);
 }

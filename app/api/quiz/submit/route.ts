@@ -52,8 +52,8 @@ export async function POST(request: Request) {
       const selected = new Map(answers.map((answer) => [answer.questionId, answer.choice || null]));
       for (const answer of result.results) {
         await connection.execute(
-          `INSERT INTO quiz_attempt_answers (learner_id, attempt_id, question_id, topic_id, selected_choice, correct_choice, is_correct)
-           SELECT ?, ?, q.id, q.topic_id, ?, ?, ? FROM questions q WHERE q.id = ? AND q.status = 'published'`,
+          `INSERT INTO quiz_attempt_answers (learner_id, attempt_id, question_id, topic_id, selected_choice, correct_choice, is_correct, question_revision_id)
+           SELECT ?, ?, q.id, q.topic_id, ?, ?, ?, q.current_revision_id FROM questions q WHERE q.id = ? AND q.status = 'published'`,
           [learner.id, attemptId, selected.get(answer.questionId) ?? null, answer.correctChoice, answer.correct, answer.questionId],
         );
       }

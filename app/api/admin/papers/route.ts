@@ -102,7 +102,7 @@ async function savePaper(request: Request, body: Record<string, unknown> | null,
     }
     let paperId = id;
     if (update) {
-      const [exists] = await connection.execute<Array<RowDataPacket & { id: number }>>("SELECT id FROM papers WHERE id = ? LIMIT 1", [id]);
+      const [exists] = await connection.execute<Array<RowDataPacket & { id: number }>>("SELECT id FROM papers WHERE id = ? LIMIT 1 FOR UPDATE", [id]);
       if (!exists[0]) {
         await connection.rollback();
         return NextResponse.json({ error: "Past paper not found." }, { status: 404 });

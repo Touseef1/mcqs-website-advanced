@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import type { RowDataPacket } from "mysql2";
 import { getAdminPrincipal, requirePermission } from "@/lib/admin-auth";
 import { requestedStatus, slugify, validSlug } from "@/lib/admin-content";
+import { getQuestionTransition } from "@/lib/admin-workflow";
 import { db, hasDatabase } from "@/lib/db";
 
 import { auditAdmin, csrfFailure } from "@/lib/admin-security";
@@ -110,7 +111,25 @@ export async function PATCH(request: Request) {
       try {
         await connection.beginTransaction();
         const topicFilter = kind === "subject" ? "t.subject_id = ?" : "t.id = ?";
-        const topicIds = kind === "subject" ? "SELECT id FROM topics WHERE subject_id = ?" : "SELECT id FROM topics WHERE id = ?";
+        const [questions] = await connection.execute<Array<RowDataPacket & { id: number; status: string }>>(
+          `SELECT q.id, q.status FROM questions q JOIN topics t ON t.id = q.topic_id WHERE ${topicFilter} FOR UPDATE`, [id],
+        );
+        for (const question of questions) {
+          if (question.status === "archived") continue;
+          const transition = getQuestionTransition(question.status, "archived");
+          if (!transition || !requirePermission(principal, transition.permission)) {
+            await connection.rollback();
+            return NextResponse.json({ error: `Question #${question.id} cannot be archived from ${question.status}. No category changes were saved.` }, { status: 409 });
+          }
+        }
+        const [affectedPapers] = await connection.execute<Array<RowDataPacket & { id: number; title: string }>>(
+          `SELECT DISTINCT p.id, p.title FROM papers p JOIN paper_questions pq ON pq.paper_id = p.id JOIN questions q ON q.id = pq.question_id
+           JOIN topics t ON t.id = q.topic_id WHERE ${topicFilter} AND p.status = 'published' FOR UPDATE`, [id],
+        );
+        if (affectedPapers.length && body?.confirmPaperRemoval !== true) {
+          await connection.rollback();
+          return NextResponse.json({ error: "Archiving this category will also archive papers containing its questions. Confirm to continue.", affectedPapers }, { status: 409 });
+        }
         await connection.execute(
           `UPDATE papers SET status = 'archived', updated_by = ? WHERE id IN (
              SELECT pq.paper_id FROM paper_questions pq JOIN questions q ON q.id = pq.question_id
@@ -118,10 +137,9 @@ export async function PATCH(request: Request) {
            )`,
           [principal.id, id],
         );
-        await connection.execute(
-          `UPDATE questions SET status = 'archived', updated_by = ? WHERE topic_id IN (${topicIds})`,
-          [principal.id, id],
-        );
+        for (const question of questions) if (question.status !== "archived") {
+          await connection.execute("UPDATE questions SET status = 'archived', updated_by = ?, version = version + 1 WHERE id = ?", [principal.id, question.id]);
+        }
         await connection.execute(kind === "subject"
           ? "UPDATE topics SET status = 'archived', updated_by = ? WHERE subject_id = ?"
           : "UPDATE topics SET status = 'archived', updated_by = ? WHERE id = ?", [principal.id, id]);

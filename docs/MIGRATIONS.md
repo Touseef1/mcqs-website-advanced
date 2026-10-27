@@ -11,11 +11,14 @@ Apply each numbered migration exactly once, in ascending order, to the `mcqs_web
 | 005 | `005_verified_papers_only.sql` | Removes shipped sample content and requires source review. |
 | 006 | `006_admin_roles_workflow_security.sql` | Admin roles, audit log, ownership, and security workflow. |
 | 007 | `007_platform_improvements.sql` | Search, image metadata, learner actions, quiz review data, and rate limiting. |
+| 008 | `008_workflow_integrity.sql` | Question versions, immutable content snapshots, and links from learner answers to the question revision they saw. |
 
 Migration 004 restores the missing sequence number with the paper metadata change. Migration 005 is retained in its historical position because it cleans up old sample rows and temporarily restores the legacy single paper type; 007 upgrades it to the current values. For an existing database that has already applied 005 and 006, apply 004 once to add paper metadata, then 007. Do not rerun 001–003, 005, or 006.
 
+For an existing database that has completed 001–007, run migration 008 once. It preserves existing rows, adds a default version of `1` to every question, and leaves revision links nullable until a question is republished or edited while published.
+
 ```bash
-for migration in sql/migrations/00{1,2,3,4,5,6,7}_*.sql; do
+for migration in sql/migrations/00{1,2,3,4,5,6,7,8}_*.sql; do
   mysql -u YOUR_DB_USER -p mcqs_website < "$migration"
 done
 ```
@@ -25,4 +28,5 @@ For the already-running project whose database has migrations 001–003, 005, an
 ```bash
 mysql -u YOUR_DB_USER -p mcqs_website < sql/migrations/004_paper_metadata.sql
 mysql -u YOUR_DB_USER -p mcqs_website < sql/migrations/007_platform_improvements.sql
+mysql -u YOUR_DB_USER -p mcqs_website < sql/migrations/008_workflow_integrity.sql
 ```
