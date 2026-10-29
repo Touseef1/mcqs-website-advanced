@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import type { LearnerPrincipal } from "@/lib/learner-auth";
+import { getErrorMessage, parseApiResponse } from "@/lib/error-message";
+import { notify } from "@/lib/toast";
 
 type Progress = {
   summary: { attempts: number; averageScore: number; savedQuestions: number };
@@ -26,13 +28,14 @@ export function AccountPanel({ learner }: { learner: LearnerPrincipal | null }) 
 
   useEffect(() => {
     if (!learner) return;
+    const controller = new AbortController();
     void Promise.all([
-      fetch("/api/learner/progress").then((response) => response.ok ? response.json() as Promise<Progress> : null),
-      fetch("/api/learner/bookmarks").then((response) => response.ok ? response.json() as Promise<{ bookmarks: SavedQuestion[] }> : null),
+      fetch("/api/learner/progress", { signal: controller.signal }).then((response) => parseApiResponse<Progress>(response, "Could not load your quiz history.")),
+      fetch("/api/learner/bookmarks", { signal: controller.signal }).then((response) => parseApiResponse<{ bookmarks: SavedQuestion[] }>(response, "Could not load your saved questions.")),
     ]).then(([summary, bookmarks]) => {
-      if (summary) setProgress(summary);
-      if (bookmarks) setSaved(bookmarks.bookmarks);
-    }).catch(() => setError("Could not load your account activity."));
+      setProgress(summary); setSaved(bookmarks.bookmarks);
+    }).catch((cause) => { if (!controller.signal.aborted) { const message = getErrorMessage(cause, "Could not load your account activity."); setError(message); notify.error(message); } });
+    return () => controller.abort();
   }, [learner]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -45,27 +48,29 @@ export function AccountPanel({ learner }: { learner: LearnerPrincipal | null }) 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, email, password }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? "Could not sign in.");
+      const data = await parseApiResponse<{ message?: string }>(response, "Could not sign in.");
       if (mode === "register") setMessage(data.message || "Check your inbox to verify your email.");
       else router.refresh();
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Could not sign in.");
+      const message = getErrorMessage(submitError, "Could not sign in."); setError(message); notify.error(message);
     } finally {
       setBusy(false);
     }
   }
 
   async function signOut() {
-    await fetch("/api/learner/logout", { method: "POST" });
-    router.refresh();
+    try { const response = await fetch("/api/learner/logout", { method: "POST" }); await parseApiResponse(response, "Could not sign out."); router.refresh(); }
+    catch (cause) { notify.error(getErrorMessage(cause, "Could not sign out.")); }
   }
 
   async function removeBookmark(questionId: number) {
-    const response = await fetch("/api/learner/bookmarks", {
-      method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ questionId }),
-    });
-    if (response.ok) setSaved((items) => items.filter((item) => item.questionId !== questionId));
+    try {
+      const response = await fetch("/api/learner/bookmarks", {
+        method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ questionId }),
+      });
+      await parseApiResponse(response, "Could not remove the saved question.");
+      setSaved((items) => items.filter((item) => item.questionId !== questionId));
+    } catch (cause) { notify.error(getErrorMessage(cause, "Could not remove the saved question.")); }
   }
 
   if (!learner) {

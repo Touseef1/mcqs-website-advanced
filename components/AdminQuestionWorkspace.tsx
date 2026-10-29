@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from "react";
 import Image from "next/image";
+import { useConfirmModal } from "@/components/ConfirmModal";
+import { ApiResponseError, ConfirmationCancelledError, getErrorMessage, isConfirmationCancelled, parseApiResponse } from "@/lib/error-message";
+import { notify as toastNotify } from "@/lib/toast";
 
 type Status = "draft" | "in_review" | "approved" | "published" | "rejected" | "archived";
 type Topic = { id: number; subject_id: number; subject_name: string; name: string; status: Status };
@@ -18,7 +21,7 @@ const contextStorageKey = "mcqpath:question-entry-context";
 const sessionIdsKey = "mcqpath:question-entry-session-ids";
 const sessionCountKey = "mcqpath:question-entry-session-count";
 
-async function adminRequest<T = Record<string, unknown>>(path: string, method = "GET", body?: unknown): Promise<T> {
+async function adminRequest<T = Record<string, unknown>>(path: string, method = "GET", body?: unknown, confirm?: ReturnType<typeof useConfirmModal>): Promise<T> {
   const send = (payload?: unknown) => fetch(path, {
     method,
     cache: "no-store",
@@ -26,17 +29,25 @@ async function adminRequest<T = Record<string, unknown>>(path: string, method = 
     body: payload ? JSON.stringify(payload) : undefined,
   });
   let response = await send(body);
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok && Array.isArray(result.affectedPapers) && body && typeof body === "object" && !("confirmPaperRemoval" in body)) {
-    const paperNames = (result.affectedPapers as Array<{ title?: string }>).map((paper) => paper.title).filter(Boolean).join("\n• ");
-    if (window.confirm(`${result.error || "This change affects published papers."}\n\nAffected papers:\n• ${paperNames}\n\nRemove this MCQ from these papers and continue?`)) {
+  const result: unknown = await response.json().catch(() => null);
+  const data = result && typeof result === "object" && !Array.isArray(result) ? result as Record<string, unknown> : {};
+  if (!response.ok && Array.isArray(data.affectedPapers) && body && typeof body === "object" && !("confirmPaperRemoval" in body) && confirm) {
+    const paperNames = (data.affectedPapers as Array<{ title?: string }>).map((paper) => paper.title).filter(Boolean).join("\n• ");
+    let confirmedResult: unknown;
+    const accepted = await confirm({
+      title: "Remove MCQ from published papers?",
+      message: `${getErrorMessage(data, "This change affects published papers.")}\n\nAffected papers:\n• ${paperNames}`,
+      confirmLabel: "Remove and continue",
+      variant: "danger",
+    }, async () => {
       response = await send({ ...(body as Record<string, unknown>), confirmPaperRemoval: true });
-      const confirmedResult = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(confirmedResult.error || "The request could not be completed.");
-      return confirmedResult as T;
-    }
+      confirmedResult = await parseApiResponse(response, "The request could not be completed.");
+    });
+    if (!accepted) throw new ConfirmationCancelledError();
+    return confirmedResult as T;
   }
-  if (!response.ok) throw new Error(result.error || "The request could not be completed.");
+  if (!response.ok) throw new ApiResponseError(response.status, result, "The request could not be completed.");
+  if (result === null) throw new Error("The server returned an unreadable response. Please try again.");
   return result as T;
 }
 
@@ -202,7 +213,6 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
   const [busy, setBusy] = useState(false);
   const [imageBusy, setImageBusy] = useState(false);
   const [error, setError] = useState("");
-  const [toast, setToast] = useState("");
   const [similar, setSimilar] = useState<Array<{ id: number; prompt: string; similarity: number; exact?: boolean }>>([]);
   const [sessionQuestions, setSessionQuestions] = useState<Question[]>([]);
   const [sessionCount, setSessionCount] = useState(0);
@@ -227,6 +237,7 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
   const [showQuestionImage, setShowQuestionImage] = useState(false);
   const [openChoiceImages, setOpenChoiceImages] = useState<boolean[]>([false, false, false, false]);
   const questionRef = useRef<HTMLTextAreaElement>(null);
+  const confirm = useConfirmModal();
   const canUsePapers = canAddQuestionsToPapers;
 
   useEffect(() => {
@@ -283,7 +294,7 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
         if (Number.isFinite(count) && count >= 0) setSessionCount(Math.floor(count));
         if (Array.isArray(ids) && ids.some((id) => Number.isSafeInteger(id) && id > 0)) {
           const validIds = [...new Set(ids.filter((id) => Number.isSafeInteger(id) && id > 0))].slice(-100);
-          adminRequest<{ questions: Question[] }>(`/api/admin/questions?ids=${validIds.join(",")}`).then((result) => { if (active) setSessionQuestions(result.questions ?? []); }).catch(() => undefined);
+          adminRequest<{ questions: Question[] }>(`/api/admin/questions?ids=${validIds.join(",")}`).then((result) => { if (active) setSessionQuestions(result.questions ?? []); }).catch((cause) => { if (active) toastNotify.error(getErrorMessage(cause, "Could not load recently added questions.")); });
         }
       } catch { /* Ignore malformed local session state. */ }
       setContextRestored(true);
@@ -308,7 +319,8 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
       setBankQuestions(result.questions ?? []);
       setBankTotal(result.total ?? 0);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not load the MCQ bank.");
+      const message = getErrorMessage(cause, "Could not load the MCQ bank.");
+      setError(message); toastNotify.error(message);
     } finally { setBankLoading(false); }
   }, [bankSearch, bankPage, bankTopic, bankStatus]);
 
@@ -328,15 +340,10 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
       try {
         const result = await adminRequest<{ similar: Array<{ id: number; prompt: string; similarity: number; exact?: boolean }> }>("/api/admin/questions/similar", "POST", { topicId: Number(topicId), questionId: editingId, prompt: draft.prompt });
         if (!controller.signal.aborted) setSimilar(result.similar ?? []);
-      } catch { if (!controller.signal.aborted) setSimilar([]); }
+      } catch (cause) { if (!controller.signal.aborted) { setSimilar([]); toastNotify.error(getErrorMessage(cause, "Could not check for similar MCQs.")); } }
     }, 500);
     return () => { controller.abort(); window.clearTimeout(timeout); };
   }, [draft.prompt, topicId, editingId]);
-
-  function notify(message: string) {
-    setToast(message);
-    window.setTimeout(() => setToast(""), 4500);
-  }
 
   function rememberSession(ids: number[], count: number) {
     try {
@@ -353,11 +360,10 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
     try {
       const form = new FormData(); form.set("image", file);
       const response = await fetch("/api/admin/question-images", { method: "POST", body: form, cache: "no-store" });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "The image could not be uploaded.");
+      const data = await parseApiResponse<{ url: string }>(response, "The image could not be uploaded.");
       if (target === "question") setDraft((current) => ({ ...current, questionImageUrl: data.url }));
       else setDraft((current) => ({ ...current, choiceImageUrls: (current.choiceImageUrls ?? [null, null, null, null]).map((url, index) => index === target ? data.url : url) }));
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "The image could not be uploaded."); }
+    } catch (cause) { const message = getErrorMessage(cause, "The image could not be uploaded."); setError(message); toastNotify.error(message); }
     finally { setImageBusy(false); }
   }
 
@@ -371,7 +377,7 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
     try {
       const paperIds = canUsePapers ? (editingId ? editingPaperIds : paperId ? [Number(paperId)] : []) : undefined;
       const body = { id: editingId ?? undefined, expectedVersion: editingId ? editingVersion : undefined, topicId: Number(topicId), paperIds, prompt: draft.prompt.trim(), questionImageUrl: draft.questionImageUrl ?? null, choiceImageUrls: draft.choiceImageUrls ?? [null, null, null, null], choices: draft.choices.map((choice) => choice.trim()), correctChoice: draft.correctChoice, explanation: draft.explanation.trim(), sourceNote: sourceNote.trim(), difficulty };
-      const result = await adminRequest<{ id?: number; version?: number; status?: Status }>("/api/admin/questions", editingId ? "PATCH" : "POST", body);
+      const result = await adminRequest<{ id?: number; version?: number; status?: Status }>("/api/admin/questions", editingId ? "PATCH" : "POST", body, confirm);
       const id = editingId ?? Number(result.id);
       const topic = topics.find((item) => item.id === Number(topicId));
       const existing = sessionQuestions.find((question) => question.id === id);
@@ -409,12 +415,13 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
       setSimilar([]);
       setShowQuestionImage(false);
       setOpenChoiceImages([false, false, false, false]);
-      notify(editingId ? `Updated #${id}.` : `Saved #${id} as a draft. Learners cannot see it until it is approved and published.`);
+      toastNotify.success(editingId ? `Updated #${id}.` : `Saved #${id} as a draft. Learners cannot see it until it is approved and published.`);
       await onUpdated();
       if (closeAfterSave) setMode("bank");
       else window.setTimeout(() => questionRef.current?.focus(), 0);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "The MCQ could not be saved.");
+      if (isConfirmationCancelled(cause)) return;
+      const message = getErrorMessage(cause, "The MCQ could not be saved."); setError(message); toastNotify.error(message);
     } finally { setBusy(false); }
   }
 
@@ -452,8 +459,8 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
     try {
       const statusChange: Partial<Record<string, Status>> = { approve: "approved", publish: "published", archive: "archived", "submit-review": "in_review", reject: "rejected", revise: "draft" };
       if (action === "approve" || action === "submit-review" || action === "reject" || action === "revise" || action === "publish") {
-        await adminRequest("/api/admin/questions", "PATCH", { id: question.id, status: statusChange[action], ...values });
-      } else await adminRequest("/api/admin/questions/bulk", "POST", { action, ids: [question.id], ...values });
+        await adminRequest("/api/admin/questions", "PATCH", { id: question.id, status: statusChange[action], ...values }, confirm);
+      } else await adminRequest("/api/admin/questions/bulk", "POST", { action, ids: [question.id], ...values }, confirm);
       if (action === "change-category" && typeof values.topicId === "number") {
         const topic = topics.find((item) => item.id === values.topicId);
         replaceQuestion(question.id, { topicId: Number(values.topicId), topicName: topic?.name ?? question.topicName, subjectName: topic?.subject_name ?? question.subjectName });
@@ -472,9 +479,9 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
         revise: `#${question.id} is a draft again.`,
         publish: `#${question.id} is published and visible to learners.`,
       };
-      notify(messages[action] ?? "MCQ updated.");
+      toastNotify.success(messages[action] ?? "MCQ updated.");
       await onUpdated();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "The action could not be completed."); }
+    } catch (cause) { if (isConfirmationCancelled(cause)) return; const message = getErrorMessage(cause, "The action could not be completed."); setError(message); toastNotify.error(message); }
   }
 
   async function createPaper(event: FormEvent<HTMLFormElement>) {
@@ -487,20 +494,22 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
       setSourceNote(`${result.paper.examName} ${result.paper.year} Past Paper`);
       setNewPaperOpen(false);
       setNewPaper({ examName: "", title: "", year: String(new Date().getFullYear()) });
-      notify("Draft paper created and selected.");
+      toastNotify.success("Draft paper created and selected.");
       await onUpdated();
-    } catch (cause) { setNewPaperError(cause instanceof Error ? cause.message : "The paper could not be created."); }
+    } catch (cause) { const message = getErrorMessage(cause, "The paper could not be created."); setNewPaperError(message); toastNotify.error(message); }
     finally { setNewPaperBusy(false); }
   }
 
   async function handleCsvFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
-    setCsvFileName(file.name);
-    const text = await file.text();
-    setPasteText(text);
-    setBulkRows(parseCsv(text));
-    setError("");
+    try {
+      setCsvFileName(file.name);
+      const text = await file.text();
+      setPasteText(text);
+      setBulkRows(parseCsv(text));
+      setError("");
+    } catch (cause) { const message = getErrorMessage(cause, "Could not read the CSV file."); setError(message); toastNotify.error(message); }
   }
 
   function previewText() {
@@ -532,9 +541,9 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
       const nextCount = sessionCount + result.count;
       setSessionQuestions(updatedSession); setSessionCount(nextCount); rememberSession(updatedSession.map((item) => item.id), nextCount);
       setBulkRows([]); setPasteText(""); setCsvFileName("");
-      notify(`Imported ${result.count} MCQs.`);
+      toastNotify.success(`Imported ${result.count} MCQs.`);
       await onUpdated();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Bulk import failed; no MCQs were saved."); }
+    } catch (cause) { const message = getErrorMessage(cause, "Bulk import failed; no MCQs were saved."); setError(message); toastNotify.error(message); }
     finally { setBusy(false); }
   }
 
@@ -555,11 +564,11 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
     }
     setBusy(true); setError("");
     try {
-      await adminRequest("/api/admin/questions/bulk", "POST", { action, ids: selectedIds, ...values });
-      notify(`${selectedIds.length} MCQ${selectedIds.length === 1 ? "" : "s"} updated.`);
+      await adminRequest("/api/admin/questions/bulk", "POST", { action, ids: selectedIds, ...values }, confirm);
+      toastNotify.success(`${selectedIds.length} MCQ${selectedIds.length === 1 ? "" : "s"} updated.`);
       setSelectedIds([]);
       await Promise.all([loadBank(), onUpdated()]);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "The bulk action failed."); }
+    } catch (cause) { if (isConfirmationCancelled(cause)) return; const message = getErrorMessage(cause, "The bulk action failed."); setError(message); toastNotify.error(message); }
     finally { setBusy(false); }
   }
 
@@ -583,7 +592,6 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
       <button type="button" role="tab" aria-selected={mode === "bank"} className={mode === "bank" ? "active" : ""} onClick={() => setMode("bank")}>MCQ bank</button>
     </div>
     {error && <p className="form-error" role="alert">{error}</p>}
-    {toast && <div className="mcq-toast" role="status">{toast}</div>}
 
     {mode === "quick" && canCreateMcqs && <>
       <section className="admin-panel mcq-entry-panel">

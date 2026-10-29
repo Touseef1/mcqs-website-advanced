@@ -14,6 +14,7 @@ export async function POST(request: Request) {
     const [rows] = await db.execute<Array<RowDataPacket & { id: number; email: string; status: string }>>("SELECT id,email,status FROM learners WHERE email = ? LIMIT 1", [email]);
     if (rows[0]?.status === "active") {
       try { await createLearnerActionToken(rows[0].id, rows[0].email, "reset_password"); }
+      // Keep the public response identical for known and unknown emails to prevent account enumeration.
       catch (error) { console.error("Learner reset email delivery failed", error); }
     }
   }

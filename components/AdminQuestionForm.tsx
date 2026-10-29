@@ -3,6 +3,8 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import type { TopicWithSubject } from "@/lib/data";
+import { getErrorMessage, parseApiResponse } from "@/lib/error-message";
+import { notify } from "@/lib/toast";
 
 export function AdminQuestionForm({ topics }: { topics: TopicWithSubject[] }) {
   const router = useRouter();
@@ -30,13 +32,12 @@ export function AdminQuestionForm({ topics }: { topics: TopicWithSubject[] }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? "Could not save the question.");
+      await parseApiResponse(response, "Could not save the question.");
       formElement.reset();
       setNotice("Question published. It is now available in its topic.");
       router.refresh();
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Could not save the question.");
+      const message = getErrorMessage(saveError, "Could not save the question."); setError(message); notify.error(message);
     } finally {
       setBusy(false);
     }

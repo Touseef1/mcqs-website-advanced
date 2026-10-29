@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import { getErrorMessage, parseApiResponse } from "@/lib/error-message";
+import { notify } from "@/lib/toast";
 
 type ActivityAction = "login" | "logout" | "mcq_added" | "mcq_edited" | "mcq_archived" | "mcq_unarchived" | "mcq_deleted" | "paper_added" | "paper_edited" | "paper_archived" | "paper_unarchived" | "paper_deleted";
 type ActivityLog = { id: number; userId: string; userName: string; userRole: string; action: ActivityAction; targetType: "mcq" | "paper" | null; targetId: number | null; targetTitle: string | null; ipAddress: string | null; occurredAtUtc: string };
@@ -39,13 +41,9 @@ export function AdminActivityLogs() {
     if (appliedFilters.from) query.set("from", appliedFilters.from);
     if (appliedFilters.to) query.set("to", appliedFilters.to);
     void fetch(`/api/admin/activity-logs?${query}`, { cache: "no-store", signal: controller.signal })
-      .then(async (response) => {
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error ?? "Could not load activity logs.");
-        setData(result as ActivityResponse);
-      })
+      .then(async (response) => setData(await parseApiResponse<ActivityResponse>(response, "Could not load activity logs.")))
       .catch((reason: unknown) => {
-        if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "Could not load activity logs.");
+        if (!controller.signal.aborted) { const message = getErrorMessage(reason, "Could not load activity logs."); setError(message); notify.error(message); }
       })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();

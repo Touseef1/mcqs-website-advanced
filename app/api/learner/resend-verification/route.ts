@@ -13,6 +13,7 @@ export async function POST(request: Request) {
   if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 190) {
     const [rows] = await db.execute<Array<RowDataPacket & { id: number; email: string; status: string; email_verified_at: string | null }>>("SELECT id,email,status,email_verified_at FROM learners WHERE email = ? LIMIT 1", [email]);
     if (rows[0]?.status === "active" && !rows[0].email_verified_at) {
+      // Keep the public response identical for known and unknown emails to prevent account enumeration.
       try { await createLearnerActionToken(rows[0].id, rows[0].email, "verify_email"); } catch (error) { console.error("Verification email delivery failed", error); }
     }
   }

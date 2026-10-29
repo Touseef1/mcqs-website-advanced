@@ -2,6 +2,8 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { getErrorMessage, parseApiResponse } from "@/lib/error-message";
+import { notify } from "@/lib/toast";
 
 export function AdminLoginForm() {
   const router = useRouter();
@@ -20,11 +22,10 @@ export function AdminLoginForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? "Sign-in failed.");
+      await parseApiResponse(response, "Sign-in failed.");
       router.refresh();
     } catch (signInError) {
-      setError(signInError instanceof Error ? signInError.message : "Sign-in failed.");
+      const message = getErrorMessage(signInError, "Sign-in failed."); setError(message); notify.error(message);
     } finally {
       setBusy(false);
     }

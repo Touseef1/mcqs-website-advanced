@@ -39,6 +39,7 @@ export async function POST(request: Request) {
   const elapsedSeconds = "elapsedSeconds" in body && typeof body.elapsedSeconds === "number" && Number.isFinite(body.elapsedSeconds)
     ? Math.max(0, Math.min(7200, Math.floor(body.elapsedSeconds)))
     : 0;
+  let attemptHistorySaved = true;
   if (learner && db && result.total > 0) {
     const connection = await db.getConnection();
     try {
@@ -58,8 +59,8 @@ export async function POST(request: Request) {
         );
       }
       await connection.commit();
-    } catch (error) { await connection.rollback(); console.error("Could not save learner quiz attempt answers", error); }
+    } catch (error) { attemptHistorySaved = false; await connection.rollback(); console.error("Could not save learner quiz attempt answers", error); }
     finally { connection.release(); }
   }
-  return NextResponse.json(result);
+  return NextResponse.json({ ...result, attemptHistorySaved });
 }

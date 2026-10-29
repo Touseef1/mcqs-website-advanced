@@ -4,10 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import type { PublicQuestion } from "@/lib/data";
+import { getErrorMessage, parseApiResponse } from "@/lib/error-message";
+import { notify } from "@/lib/toast";
 
 type QuizResult = {
   score: number;
   total: number;
+  attemptHistorySaved?: boolean;
   results: Array<{
     questionId: number;
     selectedChoice: string;
@@ -38,13 +41,14 @@ export function QuizRunner({ questions, title, quizSlug, quizPath }: { questions
 
   useEffect(() => {
     if (!questions.length) return;
-    void fetch(`/api/learner/bookmarks?ids=${questions.map((question) => question.id).join(",")}`)
+    const controller = new AbortController();
+    void fetch(`/api/learner/bookmarks?ids=${questions.map((question) => question.id).join(",")}`, { signal: controller.signal })
       .then(async (response) => {
         if (response.status === 401) return;
-        if (!response.ok) return;
-        const data = await response.json() as { bookmarks: Array<{ questionId: number }> };
+        const data = await parseApiResponse<{ bookmarks: Array<{ questionId: number }> }>(response, "Could not load saved questions.");
         setSavedIds(data.bookmarks.map((item) => item.questionId));
-      }).catch(() => undefined);
+      }).catch((cause) => { if (!controller.signal.aborted) notify.error(getErrorMessage(cause, "Could not load saved questions.")); });
+    return () => controller.abort();
   }, [questions]);
 
   async function toggleBookmark(questionId: number) {
@@ -58,11 +62,10 @@ export function QuizRunner({ questions, title, quizSlug, quizPath }: { questions
         body: JSON.stringify({ questionId }),
       });
       if (response.status === 401) { setAccountRequired(true); return; }
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? "Could not update saved questions.");
+      await parseApiResponse(response, "Could not update saved questions.");
       setSavedIds((ids) => isSaved ? ids.filter((id) => id !== questionId) : [...ids, questionId]);
     } catch (bookmarkError) {
-      setError(bookmarkError instanceof Error ? bookmarkError.message : "Could not update saved questions.");
+      const message = getErrorMessage(bookmarkError, "Could not update saved questions."); setError(message); notify.error(message);
     } finally {
       setSavingId(null);
     }
@@ -89,11 +92,11 @@ export function QuizRunner({ questions, title, quizSlug, quizPath }: { questions
           elapsedSeconds: Math.max(0, questions.length * 60 - seconds),
         }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? "Could not submit the quiz.");
-      setResult(data as QuizResult);
+      const data = await parseApiResponse<QuizResult>(response, "Could not submit the quiz.");
+      setResult(data);
+      if (data.attemptHistorySaved === false) notify.warning("Your quiz was scored, but it could not be saved to your account history.");
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Could not submit the quiz.");
+      const message = getErrorMessage(submitError, "Could not submit the quiz."); setError(message); notify.error(message);
     } finally {
       setLoading(false);
     }

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { SiteFooter, SiteHeader } from "@/components/SiteHeader";
+import { AppFeedback } from "@/components/AppFeedback";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
@@ -30,9 +31,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        <SiteHeader />
-        {children}
-        <SiteFooter />
+        <AppFeedback>
+          <SiteHeader />
+          {children}
+          <SiteFooter />
+        </AppFeedback>
       </body>
     </html>
   );
