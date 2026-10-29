@@ -37,6 +37,8 @@ export type Paper = {
   type: "Past paper" | "Model paper" | "Mock test";
   description: string;
   topicSlugs: string[];
+  questionCount: number;
+  publishedQuestionCount: number;
 };
 
 // Empty content fallbacks prevent example questions from being presented as real exam material.

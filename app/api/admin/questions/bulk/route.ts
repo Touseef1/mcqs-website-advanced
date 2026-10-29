@@ -21,7 +21,7 @@ function refreshContent() {
   revalidateTag("subjects", "max");
   revalidateTag("topics", "max");
   revalidateTag("questions", { expire: 0 });
-  revalidateTag("papers", "max");
+  revalidateTag("papers", { expire: 0 });
 }
 
 function parseInputQuestion(value: unknown): InputQuestion | null {

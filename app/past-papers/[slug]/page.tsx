@@ -31,10 +31,13 @@ async function PaperContent({ params }: Props) {
       <div className="paper-detail-heading">
         <span className={paper.type === "Past paper" ? "paper-badge official-badge" : "paper-badge"}>{paper.type} · {paper.year}</span>
         <h1>{paper.title}</h1><p>{paper.description}</p>
-        <div className="paper-detail-meta"><span>{paper.exam}</span><span>{questions.length} questions</span><span>Online practice</span></div>
+        <div className="paper-detail-meta"><span>{paper.exam}</span><span>{questions.length} published questions</span><span>Online practice</span></div>
       </div>
       <div className="paper-detail-layout">
-        <div>{questions.length ? <QuizRunner questions={publicQuestions} title={paper.title} quizSlug={paper.slug} quizPath={`/past-papers/${paper.slug}`} /> : <div className="empty-state"><h2>This paper has no published MCQs yet</h2><p>Related topics are listed here while its verified questions are being added.</p></div>}</div>
+        <div>
+          {paper.questionCount > questions.length && <p className="paper-availability-note" role="status">{paper.questionCount} MCQs are assigned to this paper in the admin panel, but only {questions.length} are published for learners. An administrator must review and publish the remaining MCQs.</p>}
+          {questions.length ? <QuizRunner questions={publicQuestions} title={paper.title} quizSlug={paper.slug} quizPath={`/past-papers/${paper.slug}`} /> : <div className="empty-state"><h2>{paper.questionCount ? "The assigned MCQs are not published yet" : "This paper has no published MCQs yet"}</h2><p>{paper.questionCount ? "The paper has MCQs assigned, but none are currently published for learners. An administrator must review and publish them." : "Related topics are listed here while its verified questions are being added."}</p></div>}
+        </div>
         <aside className="paper-topics"><span className="eyebrow">COVERED TOPICS</span><h2>Review these areas</h2>{related.map((topic) => <Link href={`/topics/${topic.slug}`} key={topic.slug}>{topic.name}<span aria-hidden>↗</span></Link>)}</aside>
       </div>
     </main>

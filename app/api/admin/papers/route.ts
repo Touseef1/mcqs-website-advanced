@@ -13,7 +13,7 @@ function noDatabase() {
 function refreshPapers() {
   revalidatePath("/past-papers");
   revalidatePath("/past-papers/[slug]", "page");
-  revalidateTag("papers", "max");
+  revalidateTag("papers", { expire: 0 });
   // Paper detail pages cache their linked questions separately. Expire that
   // data immediately so a newly linked paper does not keep showing an empty set.
   revalidateTag("questions", { expire: 0 });
@@ -37,11 +37,14 @@ export async function GET() {
   const principal = await getAdminPrincipal();
   if (!principal || !requirePermission(principal, "content:view")) return NextResponse.json({ error: "Sign in with a content role." }, { status: 401 });
   if (!hasDatabase || !db) return noDatabase();
-  const [papers] = await db.execute<Array<RowDataPacket & { id: number; exam_id: number; exam_name: string; title: string; slug: string; year: number; type: string; description: string; status: string; question_count: number; shift_session: string | null; expected_question_count: number | null }>>(
+  const [papers] = await db.execute<Array<RowDataPacket & { id: number; exam_id: number; exam_name: string; title: string; slug: string; year: number; type: string; description: string; status: string; question_count: number; published_question_count: number; shift_session: string | null; expected_question_count: number | null }>>(
     `SELECT p.id, p.exam_id, e.name AS exam_name, p.title, p.slug, p.year,
-            p.paper_type AS type, p.description, p.status, p.shift_session, p.expected_question_count, COUNT(pq.question_id) AS question_count
+            p.paper_type AS type, p.description, p.status, p.shift_session, p.expected_question_count,
+            COUNT(pq.question_id) AS question_count,
+            COUNT(CASE WHEN q.status = 'published' THEN 1 END) AS published_question_count
      FROM papers p JOIN exams e ON e.id = p.exam_id
      LEFT JOIN paper_questions pq ON pq.paper_id = p.id
+     LEFT JOIN questions q ON q.id = pq.question_id
      GROUP BY p.id ORDER BY p.year DESC, p.id DESC`,
   );
   const [links] = await db.execute<Array<RowDataPacket & { paper_id: number; question_id: number }>>(
@@ -50,7 +53,7 @@ export async function GET() {
   return NextResponse.json({ papers: papers.map((paper) => ({
     id: paper.id, examId: paper.exam_id, examName: paper.exam_name, title: paper.title,
     slug: paper.slug, year: paper.year, type: paper.type, description: paper.description,
-    status: paper.status, shiftSession: paper.shift_session, expectedQuestionCount: paper.expected_question_count == null ? null : Number(paper.expected_question_count), questionCount: Number(paper.question_count),
+    status: paper.status, shiftSession: paper.shift_session, expectedQuestionCount: paper.expected_question_count == null ? null : Number(paper.expected_question_count), questionCount: Number(paper.question_count), publishedQuestionCount: Number(paper.published_question_count),
     questionIds: links.filter((link) => link.paper_id === paper.id).map((link) => link.question_id),
   })) }, { headers: { "Cache-Control": "no-store" } });
 }

@@ -215,11 +215,16 @@ export async function getPapers(): Promise<Paper[]> {
   cacheLife("hours");
   cacheTag("papers");
   if (!hasDatabase || !db) return demoPapers;
-  const [rows] = await db.execute<PaperRow[]>(
+  const [rows] = await db.execute<Array<PaperRow & { question_count: number; published_question_count: number }>>(
     `SELECT p.id, p.slug, p.title, e.name AS exam, p.year,
-            p.paper_type AS type, p.description
+            p.paper_type AS type, p.description,
+            COUNT(pq.question_id) AS question_count,
+            COUNT(CASE WHEN q.status = 'published' THEN 1 END) AS published_question_count
      FROM papers p JOIN exams e ON e.id = p.exam_id
-     WHERE p.status = 'published' ORDER BY p.year DESC, p.id DESC`,
+     LEFT JOIN paper_questions pq ON pq.paper_id = p.id
+     LEFT JOIN questions q ON q.id = pq.question_id
+     WHERE p.status = 'published'
+     GROUP BY p.id ORDER BY p.year DESC, p.id DESC`,
   );
   const papers: Paper[] = [];
   for (const row of rows) {
@@ -239,6 +244,8 @@ export async function getPapers(): Promise<Paper[]> {
       type: row.type,
       description: row.description,
       topicSlugs: topics.map((topic) => topic.slug),
+      questionCount: Number(row.question_count),
+      publishedQuestionCount: Number(row.published_question_count),
     });
   }
   return papers;

@@ -21,7 +21,7 @@ function refreshQuestions() {
   revalidateTag("questions", { expire: 0 });
   revalidateTag("subjects", "max");
   revalidateTag("topics", "max");
-  revalidateTag("papers", "max");
+  revalidateTag("papers", { expire: 0 });
 }
 
 function parseQuestion(body: Record<string, unknown> | null) {
@@ -43,12 +43,12 @@ function parseQuestion(body: Record<string, unknown> | null) {
   return { topicId, prompt, explanation, sourceNote, choices, choiceImageUrls, questionImageUrl, correctChoice, difficulty, paperIds };
 }
 
-async function validatePaperIds(connection: import("mysql2/promise").PoolConnection, paperIds: number[]) {
+async function validatePaperIds(connection: import("mysql2/promise").PoolConnection, paperIds: number[], questionStatus: QuestionStatus) {
   if (!paperIds.length) return true;
   const [rows] = await connection.execute<Array<RowDataPacket & { id: number; status: string }>>(
     `SELECT id, status FROM papers WHERE id IN (${paperIds.map(() => "?").join(",")})`, paperIds,
   );
-  return rows.length === paperIds.length && rows.every((paper) => paper.status !== "archived");
+  return rows.length === paperIds.length && rows.every((paper) => paper.status !== "archived" && (paper.status !== "published" || questionStatus === "published"));
 }
 
 async function syncQuestionPapers(connection: import("mysql2/promise").PoolConnection, questionId: number, paperIds: number[]) {
@@ -66,6 +66,12 @@ async function syncQuestionPapers(connection: import("mysql2/promise").PoolConne
       "SELECT id, status FROM papers WHERE id = ? FOR UPDATE", [paperId],
     );
     if (!papers[0] || papers[0].status === "archived") throw new Error("The selected paper is no longer active.");
+    if (papers[0].status === "published") {
+      const [questions] = await connection.execute<Array<RowDataPacket & { status: string }>>(
+        "SELECT status FROM questions WHERE id = ? FOR UPDATE", [questionId],
+      );
+      if (questions[0]?.status !== "published") throw new Error("Only published MCQs can be added to a published paper. Publish the MCQ first.");
+    }
     const [maxRows] = await connection.execute<Array<RowDataPacket & { max_order: number | null }>>(
       "SELECT MAX(question_order) AS max_order FROM paper_questions WHERE paper_id = ?", [paperId],
     );
@@ -160,9 +166,9 @@ export async function POST(request: Request) {
   try {
     await connection.beginTransaction();
     const paperIds = parsed.paperIds ?? [];
-    if (!await validatePaperIds(connection, paperIds)) {
+    if (!await validatePaperIds(connection, paperIds, status)) {
       await connection.rollback();
-      return NextResponse.json({ error: "Choose active past papers. Archived papers cannot receive MCQs." }, { status: 400 });
+      return NextResponse.json({ error: "Choose active past papers. Published papers can contain only published MCQs." }, { status: 400 });
     }
     const [insert] = await connection.execute(
       `INSERT INTO questions (topic_id, question_text, explanation, source_note, question_image_url, correct_choice, difficulty, status, created_by, updated_by)
@@ -285,7 +291,6 @@ export async function PATCH(request: Request) {
       "SELECT t.id FROM topics t JOIN subjects s ON s.id = t.subject_id WHERE t.id = ? AND t.status != 'archived' AND s.status != 'archived'", [parsed.topicId],
     );
     if (!topic[0]) { await connection.rollback(); return NextResponse.json({ error: "Choose an active topic." }, { status: 400 }); }
-    if (parsed.paperIds && !await validatePaperIds(connection, parsed.paperIds)) { await connection.rollback(); return NextResponse.json({ error: "Choose active papers. Archived papers cannot receive MCQs." }, { status: 400 }); }
     const [oldChoices] = await connection.execute<Array<RowDataPacket & { label: string; choice_text: string; image_url: string | null }>>("SELECT label, choice_text, image_url FROM choices WHERE question_id = ? ORDER BY label FOR UPDATE", [id]);
     const choiceChanged = existing.correct_choice !== parsed.correctChoice || oldChoices.some((choice, index) => choice.choice_text !== parsed.choices[index]);
     if (existing.status === "published" && choiceChanged) {
@@ -300,13 +305,18 @@ export async function PATCH(request: Request) {
       if (papers.length && body?.confirmPaperRemoval !== true) { await connection.rollback(); return NextResponse.json({ error: "This edit moves the MCQ out of published status. Confirm removal from these published papers.", affectedPapers: papers }, { status: 409 }); }
       if (papers.length) await connection.execute("DELETE FROM paper_questions WHERE question_id = ? AND paper_id IN (SELECT id FROM papers WHERE status = 'published')", [id]);
     }
+    const paperIdsToSync = parsed.paperIds?.filter((paperId) => !(newStatus !== "published" && affectedPapers.some((paper) => paper.id === paperId)));
+    if (paperIdsToSync && !await validatePaperIds(connection, paperIdsToSync, newStatus)) {
+      await connection.rollback();
+      return NextResponse.json({ error: "Choose active papers. Published papers can contain only published MCQs." }, { status: 400 });
+    }
     await connection.execute(
       "UPDATE questions SET topic_id = ?, question_text = ?, explanation = ?, source_note = ?, question_image_url = ?, correct_choice = ?, difficulty = ?, status = ?, review_note = IF(? = 'draft', NULL, review_note), updated_by = ?, version = version + 1 WHERE id = ? AND version = ?",
       [parsed.topicId, parsed.prompt, parsed.explanation, parsed.sourceNote, parsed.questionImageUrl, parsed.correctChoice, parsed.difficulty, newStatus, newStatus, principal.id, id, expectedVersion],
     );
     await connection.execute("DELETE FROM choices WHERE question_id = ?", [id]);
     for (let index = 0; index < labels.length; index++) await connection.execute("INSERT INTO choices (question_id, label, choice_text, image_url) VALUES (?, ?, ?, ?)", [id, labels[index], parsed.choices[index], parsed.choiceImageUrls[index]]);
-    if (parsed.paperIds) await syncQuestionPapers(connection, id, parsed.paperIds);
+    if (paperIdsToSync) await syncQuestionPapers(connection, id, paperIdsToSync);
     if (newStatus === "published" && existing.status === "published" && choiceChanged) {
       const nextRevision = await saveQuestionRevision(connection, id, principal.id, { questionText: parsed.prompt, explanation: parsed.explanation, sourceNote: parsed.sourceNote, correctChoice: parsed.correctChoice, questionImageUrl: parsed.questionImageUrl, choices: labels.map((label, index) => ({ label, choice_text: parsed.choices[index], image_url: parsed.choiceImageUrls[index] })) });
       await connection.execute("UPDATE questions SET current_revision_id = ? WHERE id = ?", [nextRevision, id]);
