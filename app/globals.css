@@ -1104,6 +1104,116 @@ body:has(.admin-page) { background: #f3f7f4; }
   .admin-sidebar nav button { min-height: 38px; flex: 0 0 auto; padding: 0 10px; }
   .admin-workspace-heading { align-items: center; flex-direction: row; min-height: 64px; padding: 10px 14px; }
   .admin-global-search { min-height: 39px; }
-  .admin-topbar-user > span:first-child, .admin-global-search kbd { display: none; }
+  .admin-topbar-meta, .admin-global-search kbd { display: none; }
   .admin-content-area { padding: 20px 14px 30px; }
+}
+
+/* Admin workspace: one calm layout for overview, categories, papers, and MCQ entry. */
+body:has(.admin-page) { background: #f4f7f5; color: #1c332b; }
+.admin-dashboard { background: #f4f7f5; }
+.admin-sidebar { background: #0c3b30; border-right: 0; }
+.admin-sidebar nav button { gap: 10px; border-radius: 10px; }
+.admin-nav-icon { width: 18px; height: 18px; display: grid; place-items: center; color: #b7d2c6; }
+.admin-nav-icon svg { width: 18px; height: 18px; display: block; }
+.admin-sidebar nav button.active { background: #167256; box-shadow: inset 3px 0 0 #d7ef73; }
+.admin-sidebar nav button.active .admin-nav-icon { color: #fff; }
+.admin-workspace-heading { background: rgba(255,255,255,.92); backdrop-filter: blur(10px); }
+.admin-global-search { background: #f7faf8; }
+.admin-topbar-actions .button { width: auto; min-width: 0; min-height: 38px; padding: 0 14px; border-radius: 9px; font-size: 13px; font-weight: 700; }
+.admin-topbar-actions .admin-refresh { font-size: 13px; }
+.admin-topbar-meta { display: grid; gap: 1px; }
+.admin-topbar-meta strong { color: #24382f; font-size: 13px; font-weight: 700; }
+.admin-topbar-meta small { color: #6d7f76; font-size: 11px; }
+.admin-kicker { margin: 0 0 4px; color: #6a7f74; font-size: 11px; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
+.admin-section-intro h1 { font-size: 30px; letter-spacing: -.04em; }
+.admin-section-intro .button { min-height: 42px; padding: 0 16px; border-radius: 10px; font-size: 14px; }
+.admin-panel, .admin-metric-card { border-color: #e3ebe6; border-radius: 14px; box-shadow: 0 1px 2px rgba(18, 42, 32, .04); }
+.admin-panel-heading h3 { font-size: 18px; }
+.admin-panel-heading p { margin: 4px 0 0; color: #6b7d74; font-size: 13px; line-height: 1.5; }
+.admin-form { gap: 12px; }
+.admin-form label, .paper-details-grid label, .paper-builder-main > label { color: #3c5248; font-size: 13px; font-weight: 650; }
+.admin-form input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), .admin-form select, .admin-form textarea, .admin-filter { min-height: 42px; border-color: #d5e0da; border-radius: 10px; font-size: 14px; }
+.admin-form textarea { min-height: 88px; line-height: 1.5; }
+.admin-segment { width: fit-content; max-width: 100%; padding: 4px; display: inline-flex; gap: 4px; border-radius: 12px; background: #e7f0eb; }
+.admin-segment button { min-height: 36px; padding: 0 14px; border: 0; border-radius: 9px; background: transparent; color: #52685e; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.admin-segment button.active, .admin-segment button[aria-selected="true"] { background: #fff; color: #0e4d38; box-shadow: 0 1px 2px rgba(16, 48, 36, .08); }
+.mcq-workspace-tabs { width: fit-content; overflow: visible; }
+.mcq-workspace-tabs button { border: 0; background: transparent; }
+.category-card-grid { display: grid; gap: 14px; }
+.category-card { overflow: hidden; border: 1px solid #e3ebe6; border-radius: 16px; background: #fff; box-shadow: 0 1px 2px rgba(18, 42, 32, .04); }
+.category-card-head, .category-topic-card { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.category-card-head { padding: 16px; background: linear-gradient(180deg, #f7faf8, #fff); }
+.category-card-head p, .category-topic-card p { margin: 6px 0 0; color: #66786f; font-size: 13px; line-height: 1.5; }
+.category-topics { display: grid; gap: 8px; padding: 0 12px 12px; }
+.category-topic-card { padding: 12px; border-radius: 12px; background: #f4f8f6; }
+.category-topic-empty { margin: 0; padding: 4px 16px 14px; color: #7d8e86; font-size: 13px; }
+.category-card .admin-inline-actions, .category-topic-card .admin-inline-actions { justify-content: flex-end; margin-top: 0; }
+.paper-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; padding: 4px 20px 20px; }
+.paper-library-card { display: grid; align-content: start; gap: 8px; min-height: 210px; padding: 16px; border: 1px solid #e3ebe6; border-radius: 16px; background: #f8fbf9; }
+.paper-library-card h3 { margin: 0; color: #17352a; font-size: 17px; letter-spacing: -.02em; }
+.paper-library-card p, .paper-library-card small { margin: 0; color: #66786f; font-size: 13px; line-height: 1.45; }
+.paper-library-card small { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.paper-library-card > strong { color: #0d7051; font-size: 13px; }
+.paper-library-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #6d7f76; font-size: 12px; font-weight: 700; }
+.paper-more-fields { padding: 12px; border: 1px dashed #d5e2db; border-radius: 12px; background: #f8fbf9; }
+.paper-more-fields summary { cursor: pointer; color: #0d7051; font-size: 13px; font-weight: 750; }
+.paper-more-fields .paper-details-grid { margin-top: 12px; }
+.mcq-bank-thumb { width: 72px; height: 48px; margin-top: 8px; object-fit: cover; border: 1px solid #e1eae4; border-radius: 8px; }
+.admin-paper-library { padding: 0 0 8px; overflow: visible; }
+.admin-paper-library .admin-panel-heading { padding: 18px 20px 0; }
+.paper-builder-form { grid-template-columns: minmax(0, 1.45fr) minmax(280px, .72fr); gap: 18px; align-items: start; }
+.paper-builder-main { min-width: 0; display: grid; gap: 12px; align-content: start; }
+.paper-details-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.paper-question-builder { margin: 0; padding: 16px; border-radius: 12px; background: #f8fbf9; }
+.paper-picker-filters { grid-template-columns: minmax(180px, 1.4fr) repeat(3, minmax(120px, 1fr)); }
+.paper-builder-rail { position: sticky; top: 16px; display: grid; align-content: start; gap: 10px; max-height: calc(100vh - 32px); padding: 14px; border: 1px solid #dce8e1; border-radius: 14px; background: #f8fbf9; }
+.paper-rail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.paper-rail-head strong { display: block; margin-top: 2px; color: #17352a; font-size: 16px; }
+.paper-rail-head > span { color: #73867d; font-size: 12px; }
+.paper-builder-rail .paper-selected-list { max-height: min(48vh, 520px); overflow: auto; padding: 0; border: 0; }
+.paper-builder-rail .paper-selected-list article { align-items: flex-start; flex-wrap: wrap; padding: 10px 0; }
+.paper-builder-rail .paper-selected-list article > span { flex: 1 1 140px; }
+.paper-builder-rail .admin-inline-actions .button-primary { flex: 1; }
+.admin-paper-library .admin-data-table td { white-space: normal; vertical-align: top; }
+.admin-paper-actions { flex-wrap: wrap; }
+.admin-paper-library > .admin-filter { width: auto; margin: 0 20px 14px; }
+.mcq-context-bar { border-radius: 14px; }
+.mcq-entry-form { max-width: none; }
+.mcq-options-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-top: 4px; }
+.mcq-options-heading span { color: #1d342b; font-size: 14px; font-weight: 750; }
+.mcq-options-heading small, .mcq-save-hint { color: #73867d; font-size: 12px; }
+.mcq-option-grid { grid-template-columns: 1fr 1fr; gap: 12px; }
+.mcq-option-card { display: grid; gap: 8px; padding: 12px; border: 1px solid #e1eae4; border-radius: 12px; background: #fff; }
+.mcq-option-card.is-correct { border-color: #b7dfc8; background: #f3faf6; }
+.mcq-option-head { display: flex; align-items: center; gap: 8px; }
+.mcq-option-letter { width: 28px; height: 28px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 8px; background: #e7f3ec; color: #0d7051; font-size: 13px; font-weight: 800; }
+.mcq-option-card.is-correct .mcq-option-letter { background: #0d7051; color: #fff; }
+.mcq-option-card .mcq-correct-radio { display: inline-flex; align-items: center; gap: 6px; padding: 0; color: #4d645a; font-size: 12px; font-weight: 700; cursor: pointer; }
+.mcq-option-card.is-correct .mcq-correct-radio { color: #0d7051; }
+.mcq-option-head .text-link { margin-left: auto; border: 0; background: transparent; cursor: pointer; font: inherit; font-size: 12px; font-weight: 750; }
+.mcq-attach-row, .mcq-attach-field, .mcq-image-preview { display: grid; gap: 8px; }
+.mcq-image-preview { justify-items: start; }
+.mcq-image-preview img { width: auto; max-width: 180px; height: auto; border-radius: 8px; border: 1px solid #e1eae4; }
+.mcq-file-input { font-size: 13px; }
+.mcq-save-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 4px; padding-top: 12px; border-top: 1px solid #e6eee9; }
+.mcq-save-hint { margin-left: auto; }
+.mcq-bank-filters { grid-template-columns: minmax(220px, 1.4fr) minmax(180px, 1fr) minmax(140px, .7fr); }
+.mcq-bank-table td, .mcq-session-table td { white-space: normal; }
+.mcq-bank-table td > strong { max-width: 640px; }
+.admin-exam-list .admin-record { align-items: center; padding: 14px 2px; }
+.overview-my-work { border-radius: 14px; }
+@media (max-width: 1100px) {
+  .paper-builder-form, .mcq-option-grid { grid-template-columns: 1fr; }
+  .mcq-bank-filters, .paper-picker-filters { grid-template-columns: 1fr 1fr; }
+  .paper-builder-rail { position: static; max-height: none; }
+  .paper-builder-rail .paper-selected-list { max-height: 360px; }
+  .mcq-save-hint { margin-left: 0; }
+}
+@media (max-width: 760px) {
+  .admin-topbar-meta { display: none; }
+  .category-card-head, .category-topic-card { flex-direction: column; }
+  .paper-card-grid { grid-template-columns: 1fr; padding-right: 0; padding-left: 0; }
+  .admin-section-intro h1 { font-size: 24px; }
+  .admin-section-intro { flex-direction: column; align-items: stretch; }
+  .mcq-bank-filters, .paper-picker-filters { grid-template-columns: 1fr; }
 }

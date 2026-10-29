@@ -28,7 +28,7 @@ export function AdminExams({ exams, onSave }: { exams: Exam[]; onSave: (body: un
       </form>
     </section>
     <section className="admin-panel"><div className="admin-panel-heading"><div><span className="eyebrow">AVAILABLE EXAMS</span><h3>{exams.length} exams</h3></div></div>
-      <div className="admin-record-list">{exams.map((exam) => <article className="admin-record" key={exam.id}><div><div className="admin-record-title"><strong>{exam.name}</strong></div><small>/{exam.slug}</small><div className="admin-inline-actions"><button type="button" className="button button-light" onClick={() => edit(exam)}>Edit</button></div></div></article>)}{!exams.length && <p className="admin-empty">No exams yet. Add the exam body before creating its papers.</p>}</div>
+      <div className="admin-record-list admin-exam-list">{exams.map((exam) => <article className="admin-record" key={exam.id}><div><div className="admin-record-title"><strong>{exam.name}</strong></div><small>/{exam.slug}</small></div><button type="button" className="button button-light" onClick={() => edit(exam)}>Edit</button></article>)}{!exams.length && <p className="admin-empty">No exams yet. Add the exam body before creating its papers.</p>}</div>
     </section>
   </div>;
 }

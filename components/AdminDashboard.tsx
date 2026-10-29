@@ -19,8 +19,18 @@ type DashboardStats = { statuses: Record<string, number>; categories: Array<{ su
 type Tab = "overview" | "questions" | "review" | "categories" | "exams" | "papers" | "team";
 
 const tabLabels: Record<Tab, string> = { overview: "Overview", questions: "MCQ bank", review: "Review queue", categories: "Categories", exams: "Exams", papers: "Past papers", team: "Team & roles" };
-const tabIcons: Record<Tab, string> = { overview: "⌂", questions: "▤", review: "◷", categories: "◈", exams: "◇", papers: "▣", team: "♙" };
 const roleLabels: Record<AdminRole, string> = { data_entry: "Data Entry", reviewer: "Reviewer", publisher: "Publisher", admin: "Admin", super_admin: "Super Admin" };
+
+function NavIcon({ tab }: { tab: Tab }) {
+  const props = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true as const };
+  if (tab === "overview") return <svg {...props}><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1v-9.5z" /></svg>;
+  if (tab === "questions") return <svg {...props}><path d="M8 6h12M8 12h12M8 18h12" /><path d="M4 6h.01M4 12h.01M4 18h.01" /></svg>;
+  if (tab === "review") return <svg {...props}><circle cx="12" cy="12" r="8" /><path d="M12 8v4l2.5 2" /></svg>;
+  if (tab === "categories") return <svg {...props}><path d="M4 7h7l2 2h7v10H4z" /></svg>;
+  if (tab === "exams") return <svg {...props}><path d="M12 3 4 7v6c0 4.2 3.2 6.8 8 8 4.8-1.2 8-3.8 8-8V7z" /></svg>;
+  if (tab === "papers") return <svg {...props}><path d="M7 3h7l5 5v13H7z" /><path d="M14 3v5h5M9 13h6M9 17h6" /></svg>;
+  return <svg {...props}><path d="M16 19v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1" /><circle cx="9.5" cy="7.5" r="3" /><path d="M20 8v6M17 11h6" /></svg>;
+}
 
 async function sendAdmin(path: string, method = "GET", body?: unknown) {
   const send = (payload?: unknown) => fetch(path, {
@@ -61,6 +71,7 @@ export function AdminDashboard({ principal, capabilities }: { principal: AdminPr
   const [tab, setTab] = useState<Tab>("overview");
   const [globalSearch, setGlobalSearch] = useState("");
   const [entryPaperId, setEntryPaperId] = useState<number | null>(null);
+  const [paperComposeToken, setPaperComposeToken] = useState(0);
   const [subjects, setSubjects] = useState<SubjectRow[]>([]);
   const [topics, setTopics] = useState<TopicRow[]>([]);
   const [questions, setQuestions] = useState<AdminQuestion[]>([]);
@@ -130,7 +141,7 @@ export function AdminDashboard({ principal, capabilities }: { principal: AdminPr
         <a className="admin-brand" href="/admin" aria-label="MCQPath admin home"><span className="admin-brand-mark">M</span><span><strong>MCQPath</strong><small>ADMIN WORKSPACE</small></span></a>
         <div className="admin-sidebar-label">WORKSPACE</div>
         <nav aria-label="Admin sections">
-          {allowedTabs.map((item) => <button type="button" key={item} className={tab === item ? "active" : ""} aria-current={tab === item ? "page" : undefined} onClick={() => setTab(item)}><span className="admin-nav-icon" aria-hidden="true">{tabIcons[item]}</span><span>{tabLabels[item]}</span>{item === "review" && <span className="admin-nav-count">{dashboardStats.statuses.in_review ?? 0}</span>}</button>)}
+          {allowedTabs.map((item) => <button type="button" key={item} className={tab === item ? "active" : ""} aria-current={tab === item ? "page" : undefined} onClick={() => setTab(item)}><span className="admin-nav-icon"><NavIcon tab={item} /></span><span>{tabLabels[item]}</span>{item === "review" && <span className="admin-nav-count">{dashboardStats.statuses.in_review ?? 0}</span>}</button>)}
         </nav>
         <div className="admin-sidebar-spacer" />
         <div className="admin-user-chip"><span className="admin-avatar">{principal.name.slice(0, 1).toUpperCase()}</span><span><strong>{principal.name}</strong><small>{roleLabels[principal.role]}</small></span></div>
@@ -139,17 +150,17 @@ export function AdminDashboard({ principal, capabilities }: { principal: AdminPr
       <div className="admin-workspace">
         <header className="admin-workspace-heading">
           <form className="admin-global-search" onSubmit={(event) => { event.preventDefault(); setTab("questions"); }} role="search"><span aria-hidden="true">⌕</span><input aria-label="Search MCQs" value={globalSearch} onChange={(event) => setGlobalSearch(event.target.value)} placeholder="Search MCQs" /><kbd>↵</kbd></form>
-          <div className="admin-topbar-actions"><span className="admin-topbar-user"><span><strong>{principal.name} · {roleLabels[principal.role]}</strong></span><span className="admin-avatar">{principal.name.slice(0, 1).toUpperCase()}</span></span><a className="button button-light" href="/admin/password" aria-label="Change password">•••</a><button className="button button-light admin-refresh" type="button" onClick={() => void refresh()} disabled={loading} aria-label="Refresh data">{loading ? "…" : "↻"}</button></div>
+          <div className="admin-topbar-actions"><span className="admin-topbar-user"><span className="admin-avatar">{principal.name.slice(0, 1).toUpperCase()}</span><span className="admin-topbar-meta"><strong>{principal.name}</strong><small>{roleLabels[principal.role]}</small></span></span><a className="button button-light" href="/admin/password">Password</a><button className="button button-light admin-refresh" type="button" onClick={() => void refresh()} disabled={loading}>{loading ? "Refreshing…" : "Refresh"}</button></div>
         </header>
         <main className="admin-content-area">
-          <div className="admin-section-intro"><div><h1>{tabLabels[tab]}</h1><p>{tab === "overview" ? "Content status, coverage and papers that need attention." : tab === "questions" ? "Search, filter, review and publish questions." : tab === "review" ? "Review submitted questions and record a decision." : tab === "categories" ? "Subjects contain topics. Every MCQ belongs to one topic." : tab === "exams" ? "Manage exam bodies used by your paper records." : tab === "papers" ? "Create papers, then build them from the question bank." : "Manage staff access and content permissions."}</p></div>{(tab === "overview" || tab === "questions") && capabilities.createMcqs && <button type="button" className="button button-primary" onClick={() => { setGlobalSearch(""); setTab("questions"); }}>＋ Add MCQs</button>}{tab === "papers" && capabilities.managePapers && <button type="button" className="button button-primary" onClick={() => document.getElementById("create-paper-start")?.scrollIntoView({ behavior: "smooth", block: "start" })}>＋ Create paper</button>}</div>
+          <div className="admin-section-intro"><div><p className="admin-kicker">Workspace</p><h1>{tabLabels[tab]}</h1><p>{tab === "overview" ? "See what needs attention, then jump into categories, papers, or the MCQ bank." : tab === "questions" ? "Set the category once, then add questions one by one or from a paste." : tab === "review" ? "Review submitted questions and record a decision." : tab === "categories" ? "Subjects hold topics. Every MCQ belongs to one topic." : tab === "exams" ? "Keep exam bodies consistent before you build papers." : tab === "papers" ? "Create a paper, then add MCQs from the bank and set their order." : "Manage staff access and content permissions."}</p></div>{(tab === "overview" || tab === "questions") && capabilities.createMcqs && <button type="button" className="button button-primary" onClick={() => { setGlobalSearch(""); setTab("questions"); }}>Add MCQs</button>}{tab === "papers" && capabilities.managePapers && <button type="button" className="button button-primary" onClick={() => { setTab("papers"); setPaperComposeToken((current) => current + 1); }}>Create paper</button>}</div>
           <ErrorMessage>{loadError}</ErrorMessage>
           {loading && !subjects.length && !questions.length && !papers.length ? <div className="loading-panel">Loading admin records…</div> : null}
           {tab === "overview" && <OverviewPanel subjects={subjects} topics={topics} questions={questions} papers={papers} users={users} metrics={dashboardStats} canManageCategories={capabilities.manageCategories} canManagePapers={capabilities.managePapers} canManageUsers={capabilities.manageUsers} canCreateMcqs={capabilities.createMcqs} canReviewMcqs={capabilities.reviewMcqs} onSelect={setTab} />}
           {tab === "categories" && capabilities.manageCategories && <CategoriesPanel subjects={subjects} topics={topics} canEdit={capabilities.manageCategories} canPublish={capabilities.publishContent} canDelete={capabilities.deleteContent} onSave={(body, method) => perform(() => sendAdmin("/api/admin/categories", method, body), "Category saved.")} onStatus={(kind, id, status) => perform(() => sendAdmin("/api/admin/categories", "PATCH", { kind, id, status }), `Category ${status}.`)} />}
           {(tab === "questions" || tab === "review") && <QuestionsPanel key={tab} topics={topics} papers={papers} canManagePapers={capabilities.managePapers} canAddQuestionsToPapers={capabilities.addQuestionsToPapers} canQuickCreatePaper={capabilities.quickCreatePapers} canPublish={capabilities.publishContent} canDelete={capabilities.deleteContent} canCreateMcqs={capabilities.createMcqs} canReviewMcqs={capabilities.reviewMcqs} canEditOwnMcqs={capabilities.editOwnMcqs} canEditAnyMcqs={capabilities.editAnyMcqs} currentUserId={principal.id} initialPaperId={entryPaperId} initialSearch={tab === "questions" ? globalSearch : ""} initialStatus={tab === "review" ? "in_review" : "all"} startInBank={tab === "review" || Boolean(globalSearch)} onUpdated={refresh} />}
           {tab === "exams" && capabilities.managePapers && <AdminExams exams={exams} onSave={(body, method) => perform(() => sendAdmin("/api/admin/exams", method, body), "Exam saved.")} />}
-          {tab === "papers" && capabilities.managePapers && <PapersPanel papers={papers} exams={exams} subjects={subjects} topics={topics} canEdit={capabilities.managePapers} canPublish={capabilities.publishContent} canDelete={capabilities.managePapers} onSave={(body, method) => perform(() => sendAdmin("/api/admin/papers", method, body), "Paper saved.")} onStatus={(id, status) => perform(() => sendAdmin("/api/admin/papers", "PATCH", { id, status }), `Paper ${status}.`)} onReorder={(paperId, questionIds) => perform(() => sendAdmin("/api/admin/papers/reorder", "POST", { paperId, questionIds }), "Question order saved.")} onAddMcqs={(paperId) => { setEntryPaperId(paperId); setTab("questions"); }} />}
+          {tab === "papers" && capabilities.managePapers && <PapersPanel papers={papers} exams={exams} subjects={subjects} topics={topics} composeToken={paperComposeToken} canEdit={capabilities.managePapers} canPublish={capabilities.publishContent} canDelete={capabilities.managePapers} onSave={(body, method) => perform(() => sendAdmin("/api/admin/papers", method, body), "Paper saved.")} onStatus={(id, status) => perform(() => sendAdmin("/api/admin/papers", "PATCH", { id, status }), `Paper ${status}.`)} onReorder={(paperId, questionIds) => perform(() => sendAdmin("/api/admin/papers/reorder", "POST", { paperId, questionIds }), "Question order saved.")} onAddMcqs={(paperId) => { setEntryPaperId(paperId); setTab("questions"); }} />}
           {tab === "team" && capabilities.manageUsers && <TeamPanel users={users} currentId={principal.id} isSuperAdmin={principal.role === "super_admin"} onSave={(body, method) => perform(() => sendAdmin("/api/admin/users", method, body), "User account saved.")} />}
         </main>
       </div>
@@ -195,6 +206,7 @@ function CategoriesPanel({ subjects, topics, canEdit, canPublish, canDelete, onS
   const [edit, setEdit] = useState<SubjectRow | TopicRow | null>(null);
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [query, setQuery] = useState("");
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setNotice("");
@@ -217,25 +229,49 @@ function CategoriesPanel({ subjects, topics, canEdit, canPublish, canDelete, onS
     }, 0);
   }
 
+  const needle = query.trim().toLowerCase();
+  const subjectMatches = (subject: SubjectRow) => `${subject.name} ${subject.slug} ${subject.description}`.toLowerCase().includes(needle);
+  const topicMatches = (topic: TopicRow) => `${topic.name} ${topic.slug} ${topic.subject_name}`.toLowerCase().includes(needle);
+  const visibleSubjects = subjects.filter((subject) => !needle || subjectMatches(subject) || topics.some((topic) => topic.subject_id === subject.id && topicMatches(topic)));
+  const knownSubjects = new Set(subjects.map((subject) => subject.id));
+  const orphanTopics = topics.filter((topic) => !knownSubjects.has(topic.subject_id) && (!needle || topicMatches(topic)));
+
   return <div className="admin-management-grid">
-    {canEdit && <section className="admin-panel"><div className="admin-panel-heading"><div><span className="eyebrow">CONTENT STRUCTURE</span><h3>{edit ? `Edit ${kind}` : "Add a subject or topic"}</h3></div></div>
+    {canEdit && <section className="admin-panel admin-form-card"><div className="admin-panel-heading"><div><span className="eyebrow">CONTENT STRUCTURE</span><h3>{edit ? `Edit ${kind}` : kind === "subject" ? "Add a subject" : "Add a topic"}</h3><p>{kind === "subject" ? "Subjects are the top-level categories learners browse." : "Topics sit inside a subject and hold the MCQs."}</p></div></div>
       <form id="admin-category-form" className="admin-form" onSubmit={submit}>
-        <label htmlFor="category-kind">Type</label><select id="category-kind" value={kind} onChange={(event) => { setKind(event.target.value as "subject" | "topic"); setEdit(null); }}><option value="subject">Subject / category</option><option value="topic">Topic / subcategory</option></select>
+        <div className="admin-segment" role="group" aria-label="Category type">
+          <button type="button" className={kind === "subject" ? "active" : ""} aria-pressed={kind === "subject"} onClick={() => { setKind("subject"); setEdit(null); }}>Subject</button>
+          <button type="button" className={kind === "topic" ? "active" : ""} aria-pressed={kind === "topic"} onClick={() => { setKind("topic"); setEdit(null); }}>Topic</button>
+        </div>
         {kind === "topic" && <><label htmlFor="category-subject">Parent subject</label><select id="category-subject" name="subjectId" required defaultValue=""><option value="" disabled>Select a subject</option>{subjects.filter((subject) => subject.status !== "archived").map((subject) => <option value={subject.id} key={subject.id}>{subject.name}</option>)}</select></>}
         <label htmlFor="category-name">Name</label><input id="category-name" name="name" minLength={2} maxLength={160} required placeholder={kind === "subject" ? "e.g. General Knowledge" : "e.g. Everyday Science"} />
         <label htmlFor="category-slug">URL slug</label><input id="category-slug" name="slug" placeholder="Generated from the name if left blank" />
         <label htmlFor="category-description">Description</label><textarea id="category-description" name="description" rows={3} maxLength={3000} placeholder="Short description for learners and search engines" />
         <label htmlFor="category-status">Publishing status</label><select id="category-status" name="status" defaultValue="draft"><option value="draft">Draft</option>{canPublish && <option value="published">Published</option>}</select>
-        <ErrorMessage>{""}</ErrorMessage><SuccessMessage>{notice}</SuccessMessage>
-        <div className="admin-inline-actions"><button className="button button-primary" type="submit" disabled={busy || (kind === "topic" && !subjects.length)}>{busy ? "Saving…" : edit ? "Save changes" : "Create category"}</button>{edit && <button className="button button-light" type="button" onClick={() => setEdit(null)}>Cancel edit</button>}</div>
+        <SuccessMessage>{notice}</SuccessMessage>
+        <div className="admin-inline-actions"><button className="button button-primary" type="submit" disabled={busy || (kind === "topic" && !subjects.length)}>{busy ? "Saving…" : edit ? "Save changes" : kind === "subject" ? "Create subject" : "Create topic"}</button>{edit && <button className="button button-light" type="button" onClick={() => setEdit(null)}>Cancel edit</button>}</div>
         {kind === "topic" && !subjects.length && <p className="form-hint">Create a subject before adding topics.</p>}
       </form>
     </section>}
     <section className="admin-panel"><div className="admin-panel-heading"><div><span className="eyebrow">SUBJECTS & TOPICS</span><h3>{subjects.length} subjects · {topics.length} topics</h3></div></div>
-      <div className="admin-record-list">
-        {subjects.map((subject) => <article className="admin-record" key={`s-${subject.id}`}><div><div className="admin-record-title"><strong>{subject.name}</strong><StatusBadge status={subject.status} /></div><small>/{subject.slug} · {subject.topic_count} topics</small><p>{subject.description || "No description provided."}</p><div className="admin-inline-actions"><a className="text-link" href={`/api/admin/export?kind=category&categoryType=subject&id=${subject.id}&format=csv`}>Export CSV</a><a className="text-link" href={`/api/admin/export?kind=category&categoryType=subject&id=${subject.id}&format=pdf`}>Export PDF</a>{canEdit && (subject.status !== "published" || canPublish) && <button type="button" className="button button-light" onClick={() => chooseEdit(subject, "subject")}>Edit</button>}{canPublish && subject.status !== "published" && <button type="button" className="button button-primary" onClick={() => void onStatus("subject", subject.id, "published")}>Publish</button>}{canDelete && subject.status !== "archived" && <button type="button" className="button button-light" onClick={() => void onStatus("subject", subject.id, "archived")}>Archive</button>}</div></div></article>)}
-        {topics.map((topic) => <article className="admin-record admin-record-nested" key={`t-${topic.id}`}><div><div className="admin-record-title"><strong>{topic.name}</strong><StatusBadge status={topic.status} /></div><small>{topic.subject_name} · /{topic.slug} · {topic.question_count} questions</small><p>{topic.description || "No description provided."}</p><div className="admin-inline-actions"><a className="text-link" href={`/api/admin/export?kind=category&id=${topic.id}&format=csv`}>Export CSV</a><a className="text-link" href={`/api/admin/export?kind=category&id=${topic.id}&format=pdf`}>Export PDF</a>{canEdit && (topic.status !== "published" || canPublish) && <button type="button" className="button button-light" onClick={() => chooseEdit(topic, "topic")}>Edit</button>}{canPublish && topic.status !== "published" && <button type="button" className="button button-primary" onClick={() => void onStatus("topic", topic.id, "published")}>Publish</button>}{canDelete && topic.status !== "archived" && <button type="button" className="button button-light" onClick={() => void onStatus("topic", topic.id, "archived")}>Archive</button>}</div></div></article>)}
-        {!subjects.length && <p className="admin-empty">No categories yet. Add your first subject on the left.</p>}
+      <input className="admin-filter" aria-label="Search categories" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search subjects or topics" />
+      <div className="category-card-grid">
+        {visibleSubjects.map((subject) => {
+          const showAllTopics = !needle || subjectMatches(subject);
+          const subjectTopics = topics.filter((topic) => topic.subject_id === subject.id && (showAllTopics || topicMatches(topic)));
+          return <article className="category-card" key={subject.id}>
+            <header className="category-card-head">
+              <div><div className="admin-record-title"><strong>{subject.name}</strong><StatusBadge status={subject.status} /></div><small>/{subject.slug} · {subject.topic_count} topics</small>{subject.description ? <p>{subject.description}</p> : null}</div>
+              <div className="admin-inline-actions"><a className="text-link" href={`/api/admin/export?kind=category&categoryType=subject&id=${subject.id}&format=csv`}>CSV</a><a className="text-link" href={`/api/admin/export?kind=category&categoryType=subject&id=${subject.id}&format=pdf`}>PDF</a>{canEdit && (subject.status !== "published" || canPublish) && <button type="button" className="button button-light" onClick={() => chooseEdit(subject, "subject")}>Edit</button>}{canPublish && subject.status !== "published" && <button type="button" className="button button-primary" onClick={() => void onStatus("subject", subject.id, "published")}>Publish</button>}{canDelete && subject.status !== "archived" && <button type="button" className="button button-light" onClick={() => void onStatus("subject", subject.id, "archived")}>Archive</button>}</div>
+            </header>
+            <div className="category-topics">
+              {subjectTopics.map((topic) => <article className="category-topic-card" key={topic.id}><div><div className="admin-record-title"><strong>{topic.name}</strong><StatusBadge status={topic.status} /></div><small>/{topic.slug} · {topic.question_count} MCQs</small>{topic.description ? <p>{topic.description}</p> : null}</div><div className="admin-inline-actions"><a className="text-link" href={`/api/admin/export?kind=category&id=${topic.id}&format=csv`}>CSV</a><a className="text-link" href={`/api/admin/export?kind=category&id=${topic.id}&format=pdf`}>PDF</a>{canEdit && (topic.status !== "published" || canPublish) && <button type="button" className="button button-light" onClick={() => chooseEdit(topic, "topic")}>Edit</button>}{canPublish && topic.status !== "published" && <button type="button" className="button button-primary" onClick={() => void onStatus("topic", topic.id, "published")}>Publish</button>}{canDelete && topic.status !== "archived" && <button type="button" className="button button-light" onClick={() => void onStatus("topic", topic.id, "archived")}>Archive</button>}</div></article>)}
+              {!subjectTopics.length && <p className="category-topic-empty">No topics yet. Add one so MCQs have a home.</p>}
+            </div>
+          </article>;
+        })}
+        {orphanTopics.map((topic) => <article className="category-card" key={`orphan-${topic.id}`}><header className="category-card-head"><div><div className="admin-record-title"><strong>{topic.name}</strong><StatusBadge status={topic.status} /></div><small>{topic.subject_name} · /{topic.slug} · {topic.question_count} MCQs</small></div></header></article>)}
+        {!visibleSubjects.length && !orphanTopics.length && <p className="admin-empty">{subjects.length ? "No categories match this search." : "No categories yet. Add your first subject."}</p>}
       </div>
     </section>
   </div>;
@@ -245,7 +281,7 @@ function QuestionsPanel({ topics, papers, canManagePapers, canAddQuestionsToPape
   return <AdminQuestionWorkspace topics={topics} papers={papers} canManagePapers={canManagePapers} canAddQuestionsToPapers={canAddQuestionsToPapers} canQuickCreatePaper={canQuickCreatePaper} canPublish={canPublish} canDelete={canDelete} canCreateMcqs={canCreateMcqs} canReviewMcqs={canReviewMcqs} canEditOwnMcqs={canEditOwnMcqs} canEditAnyMcqs={canEditAnyMcqs} currentUserId={currentUserId} initialPaperId={initialPaperId} initialSearch={initialSearch} initialStatus={initialStatus} startInBank={startInBank} onUpdated={onUpdated} />;
 }
 
-function PapersPanel({ papers, exams, subjects, topics, canEdit, canPublish, canDelete, onSave, onStatus, onReorder, onAddMcqs }: { papers: AdminPaper[]; exams: ExamRow[]; subjects: SubjectRow[]; topics: TopicRow[]; canEdit: boolean; canPublish: boolean; canDelete: boolean; onSave: (body: unknown, method: string) => Promise<string>; onStatus: (id: number, status: string) => Promise<string>; onReorder: (paperId: number, questionIds: number[]) => Promise<string>; onAddMcqs: (paperId: number) => void }) {
+function PapersPanel({ papers, exams, subjects, topics, composeToken, canEdit, canPublish, canDelete, onSave, onStatus, onReorder, onAddMcqs }: { papers: AdminPaper[]; exams: ExamRow[]; subjects: SubjectRow[]; topics: TopicRow[]; composeToken: number; canEdit: boolean; canPublish: boolean; canDelete: boolean; onSave: (body: unknown, method: string) => Promise<string>; onStatus: (id: number, status: string) => Promise<string>; onReorder: (paperId: number, questionIds: number[]) => Promise<string>; onAddMcqs: (paperId: number) => void }) {
   const [editing, setEditing] = useState<AdminPaper | null>(null);
   const [examName, setExamName] = useState(""); const [title, setTitle] = useState(""); const [slug, setSlug] = useState(""); const [year, setYear] = useState(String(new Date().getFullYear()));
   const [description, setDescription] = useState(""); const [status, setStatus] = useState<"draft" | "published">("draft");
@@ -255,7 +291,9 @@ function PapersPanel({ papers, exams, subjects, topics, canEdit, canPublish, can
   const [page, setPage] = useState(1); const [pageSize, setPageSize] = useState(25); const [results, setResults] = useState<PickerQuestion[]>([]); const [total, setTotal] = useState(0);
   const [pickerLoading, setPickerLoading] = useState(true); const [pickerError, setPickerError] = useState(""); const [filter, setFilter] = useState(""); const [notice, setNotice] = useState(""); const [busy, setBusy] = useState(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [builderOpen, setBuilderOpen] = useState(false);
   const questionIds = selectedQuestions.map((question) => question.id);
+  const hasUnpublishedQuestions = selectedQuestions.some((question) => question.status !== "published");
   const selectedIdSet = new Set(questionIds);
   const shown = papers.filter((paper) => `${paper.title} ${paper.examName} ${paper.year} ${paper.status}`.toLowerCase().includes(filter.toLowerCase()));
   const availableTopics = topics.filter((topic) => !subjectId || topic.subject_id === Number(subjectId));
@@ -282,10 +320,17 @@ function PapersPanel({ papers, exams, subjects, topics, canEdit, canPublish, can
     return () => { window.clearTimeout(delay); controller.abort(); };
   }, [search, subjectId, topicId, questionStatus, page, pageSize]);
 
-  function reset() { setEditing(null); setExamName(""); setTitle(""); setSlug(""); setYear(String(new Date().getFullYear())); setDescription(""); setStatus("draft"); setPaperType("Past paper"); setShiftSession(""); setExpectedQuestionCount(""); setSelectedQuestions([]); }
+  function reset() { setEditing(null); setExamName(""); setTitle(""); setSlug(""); setYear(String(new Date().getFullYear())); setDescription(""); setStatus("draft"); setPaperType("Past paper"); setShiftSession(""); setExpectedQuestionCount(""); setSelectedQuestions([]); setBuilderOpen(false); }
+  useEffect(() => {
+    if (!composeToken) return;
+    setBuilderOpen(true);
+    const timer = window.setTimeout(() => document.getElementById("create-paper-start")?.scrollIntoView({ behavior: "smooth", block: "start" }), 40);
+    return () => window.clearTimeout(timer);
+  }, [composeToken]);
   async function selectPaper(paper: AdminPaper) {
     setEditing(paper); setExamName(paper.examName); setTitle(paper.title); setSlug(paper.slug); setYear(String(paper.year)); setDescription(paper.description); setStatus(paper.status === "published" ? "published" : "draft"); setPaperType(paper.type); setShiftSession(paper.shiftSession ?? ""); setExpectedQuestionCount(paper.expectedQuestionCount == null ? "" : String(paper.expectedQuestionCount));
     setSelectedQuestions([]);
+    setBuilderOpen(true);
     setPickerError("");
     try {
       const query = new URLSearchParams({ ids: paper.questionIds.join(",") });
@@ -294,7 +339,7 @@ function PapersPanel({ papers, exams, subjects, topics, canEdit, canPublish, can
       if (!response.ok) throw new Error(data.error ?? "Could not load this paper's questions.");
       setSelectedQuestions(data.questions ?? []);
     } catch (error) { setPickerError(error instanceof Error ? error.message : "Could not load this paper's questions."); }
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.setTimeout(() => document.getElementById("create-paper-start")?.scrollIntoView({ behavior: "smooth", block: "start" }), 40);
   }
   function toggleQuestion(question: PickerQuestion, checked: boolean) {
     if (checked) setSelectedQuestions((current) => current.some((item) => item.id === question.id) ? current : [...current, question]);
@@ -323,24 +368,24 @@ function PapersPanel({ papers, exams, subjects, topics, canEdit, canPublish, can
   }
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setNotice("");
-    const result = await onSave({ id: editing?.id, examName, title, slug, year: Number(year), type: paperType, shiftSession, expectedQuestionCount, description, status, questionIds }, editing ? "PATCH" : "POST");
+    const saveStatus = hasUnpublishedQuestions ? "draft" : status;
+    const result = await onSave({ id: editing?.id, examName, title, slug, year: Number(year), type: paperType, shiftSession, expectedQuestionCount, description, status: saveStatus, questionIds }, editing ? "PATCH" : "POST");
     setBusy(false); setNotice(result); if (result) reset();
   }
 
   return <div className="admin-content-stack">
-    {canEdit && <section className="admin-panel" id="create-paper-start"><div className="admin-panel-heading"><div><span className="eyebrow">PAPER BUILDER</span><h3>{editing ? "Edit exam paper" : "Create a past paper"}</h3><p>Build the paper from verified MCQs. Search by words, then filter by subject and topic.</p></div></div>
-      <form className="admin-form" onSubmit={submit}>
+    {canEdit && <section className="admin-panel" id="create-paper-start"><div className="admin-panel-heading"><div><span className="eyebrow">PAPER BUILDER</span><h3>{editing ? "Edit exam paper" : "Create a past paper"}</h3><p>{builderOpen ? "Add the exam details, then tick the MCQs that belong in this paper." : "Open the builder when you are ready. Existing papers stay in the cards below."}</p></div>{!builderOpen && <button type="button" className="button button-primary" onClick={() => setBuilderOpen(true)}>New paper</button>}{builderOpen && <button type="button" className="button button-light" onClick={reset}>Close</button>}</div>
+      {builderOpen && <form className="admin-form paper-builder-form" onSubmit={submit}>
+        <div className="paper-builder-main">
         <div className="paper-details-grid">
-          <div><label htmlFor="paper-exam">Exam / commission</label><select id="paper-exam" value={examName} onChange={(event) => setExamName(event.target.value)} required><option value="">Select exam</option>{exams.map((exam) => <option key={exam.id} value={exam.name}>{exam.name}</option>)}</select></div>
+          <div><label htmlFor="paper-exam">Exam</label><select id="paper-exam" value={examName} onChange={(event) => setExamName(event.target.value)} required><option value="">Select exam</option>{exams.map((exam) => <option key={exam.id} value={exam.name}>{exam.name}</option>)}</select></div>
           <div><label htmlFor="paper-title">Paper title</label><input id="paper-title" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="PPSC Junior Clerk Written Test" minLength={3} maxLength={220} required /></div>
-          <div><label htmlFor="paper-year">Exam year</label><input id="paper-year" type="number" value={year} onChange={(event) => setYear(event.target.value)} min="1900" max="2200" required /></div>
-          <div><label htmlFor="paper-slug">URL slug (optional)</label><input id="paper-slug" value={slug} onChange={(event) => setSlug(event.target.value)} placeholder="Generated from title if blank" /></div>
-          <div><label htmlFor="paper-type">Paper type</label><select id="paper-type" value={paperType} onChange={(event) => setPaperType(event.target.value as AdminPaper["type"])}><option>Past paper</option><option>Model paper</option><option>Mock test</option></select></div>
-          <div><label htmlFor="paper-shift">Shift / session (optional)</label><input id="paper-shift" value={shiftSession} onChange={(event) => setShiftSession(event.target.value)} maxLength={120} placeholder="Morning shift, Session A…" /></div>
-          <div><label htmlFor="paper-expected">Expected questions (optional)</label><input id="paper-expected" type="number" value={expectedQuestionCount} onChange={(event) => setExpectedQuestionCount(event.target.value)} min="1" max="500" placeholder="e.g. 100" /></div>
+          <div><label htmlFor="paper-year">Year</label><input id="paper-year" type="number" value={year} onChange={(event) => setYear(event.target.value)} min="1900" max="2200" required /></div>
+          <div><label htmlFor="paper-type">Type</label><select id="paper-type" value={paperType} onChange={(event) => setPaperType(event.target.value as AdminPaper["type"])}><option>Past paper</option><option>Model paper</option><option>Mock test</option></select></div>
         </div>
+        <details className="paper-more-fields"><summary>Optional details</summary><div className="paper-details-grid"><div><label htmlFor="paper-slug">URL slug</label><input id="paper-slug" value={slug} onChange={(event) => setSlug(event.target.value)} placeholder="Generated from the title" /></div><div><label htmlFor="paper-shift">Shift or session</label><input id="paper-shift" value={shiftSession} onChange={(event) => setShiftSession(event.target.value)} maxLength={120} placeholder="Morning shift" /></div><div><label htmlFor="paper-expected">Expected question count</label><input id="paper-expected" type="number" value={expectedQuestionCount} onChange={(event) => setExpectedQuestionCount(event.target.value)} min="1" max="500" placeholder="100" /></div></div></details>
         <label htmlFor="paper-description">Source and paper details</label><textarea id="paper-description" value={description} onChange={(event) => setDescription(event.target.value)} minLength={3} maxLength={3000} rows={2} placeholder="Add source, exam details, and any notes for learners." required />
-        <label htmlFor="paper-status">Publishing status</label><select id="paper-status" value={status} onChange={(event) => setStatus(event.target.value as typeof status)}><option value="draft">Save as draft</option>{canPublish && <option value="published">Publish now</option>}</select>
+        <label htmlFor="paper-status">Publishing status</label><select id="paper-status" value={hasUnpublishedQuestions ? "draft" : status} onChange={(event) => setStatus(event.target.value as typeof status)}><option value="draft">Save as draft</option>{canPublish && <option value="published" disabled={hasUnpublishedQuestions}>Publish now</option>}</select>
 
         <div className="paper-question-builder">
           <div className="paper-picker-heading"><div><span className="eyebrow">QUESTION BANK</span><h4>Add questions to this paper</h4><p>{total.toLocaleString()} matching MCQs · page {page} of {totalPages}</p></div><span className="paper-selected-count">{selectedQuestions.length} selected</span></div>
@@ -353,17 +398,21 @@ function PapersPanel({ papers, exams, subjects, topics, canEdit, canPublish, can
           <div className="paper-picker-toolbar"><span>{pickerLoading ? "Searching…" : `${results.length} shown on this page`}</span><div><label htmlFor="paper-page-size">Rows <select id="paper-page-size" value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1); }}><option value={25}>25</option><option value={50}>50</option><option value={100}>100</option></select></label><button type="button" className="text-link" onClick={addPageQuestions} disabled={!results.some((question) => question.status !== "archived" && !selectedIdSet.has(question.id))}>Add all available on this page</button></div></div>
           {pickerError && <ErrorMessage>{pickerError}</ErrorMessage>}
           <div className="paper-picker-results">{results.map((question) => <label className={`paper-picker-result ${question.status === "archived" ? "is-muted" : ""}`} key={question.id}><input type="checkbox" disabled={question.status === "archived" && !selectedIdSet.has(question.id)} checked={selectedIdSet.has(question.id)} onChange={(event) => toggleQuestion(question, event.target.checked)} /><span className="paper-picker-result-copy"><strong>{question.prompt}</strong><small>{question.subjectName} · {question.topicName} · {question.difficulty}</small><small>Source: {question.sourceNote || "Source reference required"}</small></span><StatusBadge status={question.status} /></label>)}{!pickerLoading && !results.length && <p className="admin-empty">No MCQs match these filters.</p>}</div>
-          <div className="paper-picker-pagination"><button type="button" className="button button-light" disabled={page <= 1 || pickerLoading} onClick={() => setPage((current) => Math.max(1, current - 1))}>← Previous</button><span>Page {page} / {totalPages}</span><button type="button" className="button button-light" disabled={page >= totalPages || pickerLoading} onClick={() => setPage((current) => Math.min(totalPages, current + 1))}>Next →</button></div>
-          <section className="paper-selected-list"><div className="paper-selected-heading"><strong>Paper order</strong><span>Drag a question or use the arrows to reorder.</span></div>{selectedQuestions.map((question, index) => <article key={question.id} draggable onDragStart={() => setDragIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => dropQuestion(index)} className={dragIndex === index ? "is-dragging" : ""}><button type="button" className="paper-drag-handle" aria-label={`Drag question ${index + 1}`} title="Drag to reorder">⠿</button><b>{String(index + 1).padStart(2, "0")}</b><span>{question.prompt}<small>{question.subjectName} · {question.topicName} · {question.sourceNote || "Source required"}</small></span><StatusBadge status={question.status} /><div className="paper-order-actions"><button type="button" aria-label={`Move question ${index + 1} up`} title="Move up" disabled={index === 0} onClick={() => moveQuestion(index, -1)}>↑</button><button type="button" aria-label={`Move question ${index + 1} down`} title="Move down" disabled={index === selectedQuestions.length - 1} onClick={() => moveQuestion(index, 1)}>↓</button><button type="button" aria-label={`Remove question ${index + 1}`} title="Remove" onClick={() => toggleQuestion(question, false)}>×</button></div></article>)}{!selectedQuestions.length && <p className="admin-empty">Search for an MCQ above, then add it to this paper.</p>}</section>
+          <div className="paper-picker-pagination"><button type="button" className="button button-light" disabled={page <= 1 || pickerLoading} onClick={() => setPage((current) => Math.max(1, current - 1))}>Previous</button><span>Page {page} / {totalPages}</span><button type="button" className="button button-light" disabled={page >= totalPages || pickerLoading} onClick={() => setPage((current) => Math.min(totalPages, current + 1))}>Next</button></div>
         </div>
-
-        <SuccessMessage>{notice}</SuccessMessage><div className="admin-inline-actions"><button className="button button-primary" type="submit" disabled={busy || !selectedQuestions.length}>{busy ? "Saving…" : editing ? "Save paper" : "Create paper"}</button>{editing && <button className="button button-light" type="button" onClick={reset}>Cancel edit</button>}</div>
-        {selectedQuestions.some((question) => question.status !== "published") && <p className="form-hint">This paper contains draft or archived MCQs, so it must stay a draft until you replace or publish them.</p>}{!canPublish && <p className="form-hint">Your editor role saves papers as drafts for review.</p>}
-      </form>
+        </div>
+        <aside className="paper-builder-rail" aria-label="Selected paper questions">
+          <div className="paper-rail-head"><div><span className="eyebrow">PAPER ORDER</span><strong>{selectedQuestions.length} MCQ{selectedQuestions.length === 1 ? "" : "s"}</strong></div><span>Drag or use the arrows</span></div>
+          <section className="paper-selected-list">{selectedQuestions.map((question, index) => <article key={question.id} draggable onDragStart={() => setDragIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => dropQuestion(index)} className={dragIndex === index ? "is-dragging" : ""}><button type="button" className="paper-drag-handle" aria-label={`Drag question ${index + 1}`} title="Drag to reorder">⠿</button><b>{String(index + 1).padStart(2, "0")}</b><span>{question.prompt}<small>{question.subjectName} · {question.topicName}</small></span><div className="paper-order-actions"><button type="button" aria-label={`Move question ${index + 1} up`} title="Move up" disabled={index === 0} onClick={() => moveQuestion(index, -1)}>↑</button><button type="button" aria-label={`Move question ${index + 1} down`} title="Move down" disabled={index === selectedQuestions.length - 1} onClick={() => moveQuestion(index, 1)}>↓</button><button type="button" aria-label={`Remove question ${index + 1}`} title="Remove" onClick={() => toggleQuestion(question, false)}>×</button></div></article>)}{!selectedQuestions.length && <p className="admin-empty">Check MCQs on the left. They appear here in paper order.</p>}</section>
+          <SuccessMessage>{notice}</SuccessMessage>
+          <div className="admin-inline-actions"><button className="button button-primary" type="submit" disabled={busy || !selectedQuestions.length}>{busy ? "Saving…" : editing ? "Save paper" : "Create paper"}</button>{editing && <button className="button button-light" type="button" onClick={reset}>Cancel</button>}</div>
+          {hasUnpublishedQuestions && <p className="form-hint">Draft MCQs cannot go on a published paper. Publish those MCQs first, or save this paper as a draft.</p>}{!canPublish && <p className="form-hint">Your role saves papers as drafts.</p>}
+        </aside>
+      </form>}
     </section>}
     <section className="admin-panel admin-paper-library"><div className="admin-panel-heading"><div><span className="eyebrow">PAPER LIBRARY</span><h3>{papers.length} past papers</h3></div></div>
       <input className="admin-filter" aria-label="Search past papers" value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Search by title, exam, year, or status" />
-      <div className="admin-table-wrap"><table className="admin-data-table"><thead><tr><th>Paper</th><th>Exam</th><th>Type</th><th>Year / shift</th><th>Questions</th><th>Status</th><th>Actions</th></tr></thead><tbody>{shown.map((paper) => <tr key={paper.id}><td><strong>{paper.title}</strong>{paper.description && <small className="admin-paper-description">{paper.description}</small>}</td><td>{paper.examName}</td><td>{paper.type}</td><td>{paper.year} · {paper.shiftSession || "—"}</td><td>{paper.questionCount}{paper.expectedQuestionCount ? ` / ${paper.expectedQuestionCount}` : ""}</td><td><StatusBadge status={paper.status} /></td><td><div className="admin-inline-actions admin-paper-actions"><a className="text-link" href={`/api/admin/export?kind=paper&id=${paper.id}&format=csv`}>CSV</a><a className="text-link" href={`/api/admin/export?kind=paper&id=${paper.id}&format=pdf`}>PDF</a>{canEdit && paper.status !== "archived" && <button type="button" className="button button-light" onClick={() => onAddMcqs(paper.id)}>Add MCQs</button>}{canEdit && <button type="button" className="button button-light" onClick={() => void selectPaper(paper)}>Edit</button>}{canPublish && paper.status !== "published" && <button type="button" className="button button-primary" onClick={() => void onStatus(paper.id, "published")}>Publish</button>}{canDelete && paper.status !== "archived" && <button type="button" className="button button-light" onClick={() => void onStatus(paper.id, "archived")}>Archive</button>}</div></td></tr>)}</tbody></table>{!shown.length && <p className="admin-empty">No papers match this search.</p>}</div>
+      <div className="paper-card-grid">{shown.map((paper) => <article className="paper-library-card" key={paper.id}><div className="paper-library-card-top"><StatusBadge status={paper.status} /><span>{paper.type}</span></div><h3>{paper.title}</h3><p>{paper.examName} · {paper.year}{paper.shiftSession ? ` · ${paper.shiftSession}` : ""}</p><strong>{paper.questionCount}{paper.expectedQuestionCount ? ` / ${paper.expectedQuestionCount}` : ""} questions</strong>{paper.description ? <small>{paper.description}</small> : null}<div className="admin-inline-actions"><a className="text-link" href={`/api/admin/export?kind=paper&id=${paper.id}&format=csv`}>CSV</a><a className="text-link" href={`/api/admin/export?kind=paper&id=${paper.id}&format=pdf`}>PDF</a>{canEdit && paper.status !== "archived" && <button type="button" className="button button-light" onClick={() => onAddMcqs(paper.id)}>Add MCQs</button>}{canEdit && <button type="button" className="button button-light" onClick={() => void selectPaper(paper)}>Edit</button>}{canPublish && paper.status !== "published" && <button type="button" className="button button-primary" onClick={() => void onStatus(paper.id, "published")}>Publish</button>}{canDelete && paper.status !== "archived" && <button type="button" className="button button-light" onClick={() => void onStatus(paper.id, "archived")}>Archive</button>}</div></article>)}{!shown.length && <p className="admin-empty">No papers match this search.</p>}</div>
     </section>
   </div>;
 }
@@ -381,7 +430,7 @@ function TeamPanel({ users, currentId, isSuperAdmin, onSave }: { users: AdminUse
         <label htmlFor="team-name">Full name</label><input id="team-name" value={name} onChange={(event) => setName(event.target.value)} minLength={2} maxLength={140} required />
         <label htmlFor="team-email">Email</label><input id="team-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} maxLength={190} required />
         <label htmlFor="team-password">{editing ? "New password (leave blank to keep current)" : "Temporary password"}</label><input id="team-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={12} maxLength={200} autoComplete="new-password" required={!editing} />
-        <label htmlFor="team-role">Role</label><select id="team-role" value={role} onChange={(event) => setRole(event.target.value as typeof role)}><option value="editor">MCQ Contributor · add and edit MCQs only</option><option value="reviewer">Category & MCQ Manager · manage MCQs and categories</option>{isSuperAdmin && <option value="admin">Paper Manager · manage MCQs, categories, and papers</option>}</select>
+        <label htmlFor="team-role">Role</label><select id="team-role" value={role} onChange={(event) => setRole(event.target.value as typeof role)}><option value="data_entry">Data Entry · create MCQs and edit own drafts</option><option value="reviewer">Reviewer · approve or reject submitted MCQs</option><option value="publisher">Publisher · publish approved MCQs and manage papers</option>{isSuperAdmin && <option value="admin">Admin · full workspace access except super-admin settings</option>}{isSuperAdmin && <option value="super_admin">Super Admin · all permissions, including other super admins</option>}</select>
         {editing && <><label htmlFor="team-status">Account status</label><select id="team-status" value={status} onChange={(event) => setStatus(event.target.value as typeof status)}><option value="active">Active</option><option value="inactive">Inactive</option></select></>}
         <SuccessMessage>{notice}</SuccessMessage><div className="admin-inline-actions"><button className="button button-primary" type="submit" disabled={busy}>{busy ? "Saving…" : editing ? "Save account" : "Create account"}</button>{editing && <button className="button button-light" type="button" onClick={reset}>Cancel edit</button>}</div>
         <p className="form-hint">Passwords need at least 12 characters and are stored as salted scrypt hashes. Never send passwords over chat.</p>

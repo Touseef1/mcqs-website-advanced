@@ -230,14 +230,18 @@ export async function PATCH(request: Request) {
       if (affected.length) await connection.execute("DELETE FROM paper_questions WHERE question_id = ? AND paper_id IN (SELECT id FROM papers WHERE status = 'published')", [id]);
       let revisionId: number | null = null;
       if (target === "published") revisionId = await saveQuestionRevision(connection, id, principal.id);
-      await connection.execute(
+      const [updated] = await connection.execute(
         `UPDATE questions SET status = ?, updated_by = ?, version = version + 1,
          reviewed_by = IF(? IN ('approved','rejected'), ?, reviewed_by),
          reviewed_at = IF(? IN ('approved','rejected'), UTC_TIMESTAMP(), reviewed_at),
          review_note = IF(? IN ('approved','rejected'), ?, IF(? = 'draft', NULL, review_note)),
          current_revision_id = COALESCE(?, current_revision_id) WHERE id = ?`,
-        [target, principal.id, target, principal.id, target, target, target, note || null, target, revisionId, id],
+        [target, principal.id, target, principal.id, target, target, note || null, target, revisionId, id],
       );
+      if (Number((updated as { affectedRows?: number }).affectedRows ?? 0) < 1) {
+        await connection.rollback();
+        return NextResponse.json({ error: "The MCQ status did not change." }, { status: 500 });
+      }
       auditOld = { status: item.status, version: item.version };
       auditNew = { status: target, reviewNote: note || null, selfApprovalOverride: principal.role === "super_admin" && isSelfApproval(principal, item.created_by, target), removedFromPublishedPapers: affected.map((paper) => paper.id) };
       await connection.commit();
