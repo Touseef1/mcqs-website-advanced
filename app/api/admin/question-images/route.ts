@@ -28,7 +28,7 @@ export async function POST(request: Request) {
   const bytes = Buffer.from(await file.arrayBuffer());
   const ext = sniff(bytes);
   if (!ext) return NextResponse.json({ error: "Use a valid PNG, JPEG, or WebP image. SVG and other formats are not accepted." }, { status: 415 });
-  const directory = path.join(process.cwd(), "public", "uploads", "mcqs");
+  const directory = path.join(process.cwd(), "uploads", "mcqs");
   await mkdir(directory, { recursive: true });
   const filename = `${randomUUID()}.${ext}`;
   await writeFile(path.join(directory, filename), bytes, { flag: "wx", mode: 0o644 });

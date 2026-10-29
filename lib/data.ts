@@ -325,7 +325,7 @@ export async function searchContent(query: string) {
   );
   const [questions] = await db.execute<QuestionRow[]>(
     `SELECT q.id, t.slug AS topic_slug, q.question_text AS prompt,
-            q.correct_choice, q.explanation
+            q.correct_choice, q.explanation, q.question_image_url
      FROM questions q JOIN topics t ON t.id = q.topic_id
      WHERE q.status = 'published'
        AND (MATCH(q.question_text) AGAINST (? IN BOOLEAN MODE) OR q.question_text LIKE ?)
@@ -334,9 +334,14 @@ export async function searchContent(query: string) {
     [normalized.split(/\s+/).filter((term) => /^[\p{L}\p{N}]{2,}$/u.test(term)).map((term) => `+${term}*`).join(" "), wildcard,
       normalized.split(/\s+/).filter((term) => /^[\p{L}\p{N}]{2,}$/u.test(term)).map((term) => `+${term}*`).join(" ")],
   );
+  const questionIds = questions.map((question) => question.id);
+  const [choiceRows] = questionIds.length ? await db.execute<ChoiceRow[]>(
+    `SELECT question_id, label, choice_text, image_url FROM choices
+     WHERE question_id IN (${questionIds.map(() => "?").join(",")}) ORDER BY label`, questionIds,
+  ) : [[] as ChoiceRow[]];
   return {
     subjects: subjects.map((item) => ({ id: item.id, slug: item.slug, name: item.name, description: item.description, icon: item.name.slice(0, 2).toUpperCase(), topics: [] })),
     topics: topics.map((item) => ({ id: item.id, slug: item.slug, name: item.name, description: item.description, questionCount: Number(item.question_count), subjectSlug: item.subject_slug, subjectName: item.subject_name })),
-    questions: questions.map((item) => ({ id: item.id, topicSlug: item.topic_slug, prompt: item.prompt, choices: [], correctChoice: "", explanation: "" })),
+    questions: questions.map((item) => ({ id: item.id, topicSlug: item.topic_slug, prompt: item.prompt, questionImageUrl: item.question_image_url, choices: choiceRows.filter((choice) => choice.question_id === item.id).map((choice) => ({ label: choice.label, text: choice.choice_text, imageUrl: choice.image_url })), correctChoice: "", explanation: "" })),
   };
 }

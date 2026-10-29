@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getLearnerPrincipal } from "@/lib/learner-auth";
 import { db } from "@/lib/db";
 
-type BookmarkRow = RowDataPacket & { id: number; topic_slug: string; prompt: string; label: string; choice_text: string };
+type BookmarkRow = RowDataPacket & { id: number; topic_slug: string; prompt: string; question_image_url: string | null; label: string | null; choice_text: string | null; image_url: string | null };
 
 export async function GET(request: Request) {
   const learner = await getLearnerPrincipal();
@@ -19,7 +19,8 @@ export async function GET(request: Request) {
     params = [...params, ...ids];
   }
   const [rows] = await db.execute<BookmarkRow[]>(
-    `SELECT q.id, t.slug AS topic_slug, q.question_text AS prompt, c.label, c.choice_text
+    `SELECT q.id, t.slug AS topic_slug, q.question_text AS prompt, q.question_image_url,
+            c.label, c.choice_text, c.image_url
      FROM learner_bookmarks b
      JOIN questions q ON q.id = b.question_id AND q.status = 'published'
      JOIN topics t ON t.id = q.topic_id
@@ -27,10 +28,10 @@ export async function GET(request: Request) {
      WHERE b.learner_id = ?${filter}
      ORDER BY b.created_at DESC, q.id, c.label`, params,
   );
-  const grouped = new Map<number, { questionId: number; topicSlug: string; prompt: string; choices: Array<{ label: string; text: string }> }>();
+  const grouped = new Map<number, { questionId: number; topicSlug: string; prompt: string; questionImageUrl: string | null; choices: Array<{ label: string; text: string; imageUrl: string | null }> }>();
   for (const row of rows) {
-    const item = grouped.get(row.id) ?? { questionId: row.id, topicSlug: row.topic_slug, prompt: row.prompt, choices: [] };
-    if (row.label) item.choices.push({ label: row.label, text: row.choice_text });
+    const item = grouped.get(row.id) ?? { questionId: row.id, topicSlug: row.topic_slug, prompt: row.prompt, questionImageUrl: row.question_image_url, choices: [] };
+    if (row.label) item.choices.push({ label: row.label, text: row.choice_text ?? "", imageUrl: row.image_url });
     grouped.set(row.id, item);
   }
   return NextResponse.json({ bookmarks: [...grouped.values()] });

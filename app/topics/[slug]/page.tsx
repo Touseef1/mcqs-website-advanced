@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
+import { MCQImage } from "@/components/MCQImage";
 import { getQuestions, getTopic } from "@/lib/data";
 
 type Props = { params: Promise<{ slug: string }> };
@@ -31,7 +32,7 @@ async function TopicContent({ params }: Props) {
         {questions.slice(0, 5).map((question, index) => (
           <article className="preview-question" key={question.id}>
             <span className="preview-number">{String(index + 1).padStart(2, "0")}</span>
-            <div><h3>{question.prompt}</h3><div className="preview-options">{question.choices.map((choice) => <span key={choice.label}><b>{choice.label}</b> {choice.text}</span>)}</div></div>
+            <div><h3>{question.prompt}</h3>{question.questionImageUrl && <MCQImage src={question.questionImageUrl} alt="Question image" size="compact" />}<div className="preview-options">{question.choices.map((choice) => <span className="preview-option" key={choice.label}><b>{choice.label}</b> {choice.text}{choice.imageUrl && <MCQImage src={choice.imageUrl} alt={`Option ${choice.label} image`} size="compact" />}</span>)}</div></div>
           </article>
         ))}
         {!questions.length && <p className="empty-inline">New questions for this topic will be added soon.</p>}

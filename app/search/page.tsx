@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { SearchBar } from "@/components/SearchBar";
+import { MCQImage } from "@/components/MCQImage";
 import { searchContent } from "@/lib/data";
 
 export const metadata: Metadata = {
@@ -25,7 +26,7 @@ async function SearchResults({ searchParams }: Props) {
           <p className="search-result-count">Search results for <strong>“{query}”</strong></p>
           {results.subjects.map((subject) => <Link className="search-result" href={`/subjects/${subject.slug}`} key={`s-${subject.slug}`}><span className="result-kind">SUBJECT</span><strong>{subject.name}</strong><span>{subject.description}</span><b aria-hidden>↗</b></Link>)}
           {results.topics.map((topic) => <Link className="search-result" href={`/topics/${topic.slug}`} key={`t-${topic.slug}`}><span className="result-kind">TOPIC · {topic.subjectName}</span><strong>{topic.name}</strong><span>{topic.description}</span><b aria-hidden>↗</b></Link>)}
-          {results.questions.map((question) => <Link className="search-result" href={`/topics/${question.topicSlug}`} key={`q-${question.id}`}><span className="result-kind">QUESTION</span><strong>{question.prompt}</strong><span>Open topic practice</span><b aria-hidden>↗</b></Link>)}
+          {results.questions.map((question) => <article className="search-result" key={`q-${question.id}`}><Link href={`/topics/${question.topicSlug}`}><span className="result-kind">QUESTION</span><strong>{question.prompt}</strong><span>Open topic practice</span><b aria-hidden>↗</b></Link>{question.questionImageUrl && <MCQImage src={question.questionImageUrl} alt="Question image" size="compact" />}<span className="search-result-options">{question.choices.map((choice) => <span key={choice.label}><b>{choice.label}.</b> {choice.text}{choice.imageUrl && <MCQImage src={choice.imageUrl} alt={`Option ${choice.label} image`} size="compact" />}</span>)}</span></article>)}
           {!results.subjects.length && !results.topics.length && !results.questions.length && <div className="empty-state"><h2>No matches yet</h2><p>Try a subject name such as English, General Knowledge, or Pakistan Studies.</p></div>}
         </div>
       )}
