@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { AdminPrincipal } from "@/lib/admin-auth";
 import { db } from "@/lib/db";
+import { activityEventsFromAudit, writeAdminActivity } from "@/lib/admin-activity";
 
 /** Same-origin guard for browser cookie-authenticated state changes. */
 export function csrfFailure(request: Request) {
@@ -19,4 +20,5 @@ export async function auditAdmin(principal: AdminPrincipal, request: Request, ac
     "INSERT INTO admin_audit_log (admin_id,action,entity_type,entity_id,old_values,new_values,ip) VALUES (?,?,?,?,?,?,?)",
     [principal.id, action, entityType, entityId, JSON.stringify(oldValues), JSON.stringify(newValues), ip],
   );
+  await writeAdminActivity(principal, request, activityEventsFromAudit({ action, entityType, entityId, oldValues, newValues }));
 }

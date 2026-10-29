@@ -12,13 +12,16 @@ Apply each numbered migration exactly once, in ascending order, to the `mcqs_web
 | 006 | `006_admin_roles_workflow_security.sql` | Admin roles, audit log, ownership, and security workflow. |
 | 007 | `007_platform_improvements.sql` | Search, image metadata, learner actions, quiz review data, and rate limiting. |
 | 008 | `008_workflow_integrity.sql` | Question versions, immutable content snapshots, and links from learner answers to the question revision they saw. |
+| 009 | `009_admin_activity_logs.sql` | Staff login/logout and MCQ/paper activity snapshots for the Super Admin activity view. |
 
 Migration 004 restores the missing sequence number with the paper metadata change. Migration 005 is retained in its historical position because it cleans up old sample rows and temporarily restores the legacy single paper type; 007 upgrades it to the current values. For an existing database that has already applied 005 and 006, apply 004 once to add paper metadata, then 007. Do not rerun 001–003, 005, or 006.
 
 For an existing database that has completed 001–007, run migration 008 once. It preserves existing rows, adds a default version of `1` to every question, and leaves revision links nullable until a question is republished or edited while published.
 
+For an existing database that has completed 001–008, run migration 009 once. It creates the activity log table without changing existing content. The table intentionally has no foreign key to `admin_users`, so recorded actor snapshots survive staff account removal. The activity UI and API require this migration.
+
 ```bash
-for migration in sql/migrations/00{1,2,3,4,5,6,7,8}_*.sql; do
+for migration in sql/migrations/00{1,2,3,4,5,6,7,8,9}_*.sql; do
   mysql -u YOUR_DB_USER -p mcqs_website < "$migration"
 done
 ```
@@ -29,4 +32,5 @@ For the already-running project whose database has migrations 001–003, 005, an
 mysql -u YOUR_DB_USER -p mcqs_website < sql/migrations/004_paper_metadata.sql
 mysql -u YOUR_DB_USER -p mcqs_website < sql/migrations/007_platform_improvements.sql
 mysql -u YOUR_DB_USER -p mcqs_website < sql/migrations/008_workflow_integrity.sql
+mysql -u YOUR_DB_USER -p mcqs_website < sql/migrations/009_admin_activity_logs.sql
 ```

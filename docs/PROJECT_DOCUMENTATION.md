@@ -2,7 +2,7 @@
 
 **Purpose:** Technical overview of the MCQPath website, its user interface, backend routes, MySQL schema, and data flow.
 **Stack:** Next.js App Router, React, TypeScript, MySQL (`mysql2`), Tailwind CSS v4, and custom CSS.
-**Last updated:** 26 October 2026
+**Last updated:** 29 October 2026
 
 ## 1. Project overview
 
@@ -75,6 +75,7 @@ The root layout (`app/layout.tsx`) provides the global metadata, header, footer,
 | Past papers | Create/edit exam papers and build their ordered question lists with the searchable question picker |
 | Team & roles | Create/update admin accounts and assign available roles; Super Admin-only |
 | Exams | Create and rename exam bodies such as FPSC, PPSC, and NTS for reuse by papers |
+| Activity Logs | Super Admin-only view of staff login/logout and MCQ/paper actions, with user, action, and date filters, newest-first pagination, user summaries, and last login times |
 
 The admin interface hides unavailable tools for each role, and the API checks the same permissions independently. The UI should not be treated as the security boundary.
 
@@ -136,6 +137,7 @@ All primary content tables use InnoDB and `utf8mb4`. IDs are unsigned auto-incre
 | `papers` | `id`, `exam_id`, `title`, `slug`, `year`, `paper_type`, `description`, `status` | A past paper belongs to one exam. Public pages display published papers. |
 | `paper_questions` | `paper_id`, `question_id`, `question_order` | Join table for the many-to-many paper/question relationship. Its primary key prevents the same question being linked twice to one paper; `question_order` stores ordering inside that paper. |
 | `question_revisions` | `id`, `question_id`, `revision_number`, `content_snapshot` JSON, `created_by`, `created_at` | Immutable snapshots of a question and its options. Learner attempt answers link to the revision shown when the quiz was taken. |
+| `admin_activity_logs` | `id`, actor `user_id`/`user_name`/`user_role` snapshots, `action_type`, target type/ID/title, nullable `ip_address`, UTC `occurred_at` | Staff activity feed. It has no foreign key to staff accounts so actor snapshots remain after account removal. Migration 009 creates it. |
 
 ### Learner and administration tables
 
@@ -167,6 +169,7 @@ This table summarizes the MySQL storage types and the most important rules from 
 | `quiz_attempt_answers` | Attempt, learner, question/topic IDs, selected/correct choices, correctness flag, nullable `question_revision_id` | Stores answer review and supports weak-topic estimates; the revision link preserves the exact question/options version. One row per question per attempt. |
 | `question_revisions` | `id`, `question_id`, `revision_number`, JSON content snapshot, nullable creator, timestamp | Stores the published question and options snapshot used to preserve historical quiz results. |
 | `api_rate_limit_buckets` | Hashed scope/IP key, window start, hit count | Shared fixed-window counts for sensitive APIs. |
+| `admin_activity_logs` | `id BIGINT UNSIGNED`; `user_id BIGINT UNSIGNED`; `user_name VARCHAR(140)`; `user_role ENUM('super_admin','admin','data_entry','reviewer','publisher')`; `action_type VARCHAR(40)`; nullable `target_type ENUM('mcq','paper')`, `target_id BIGINT UNSIGNED`, `target_title VARCHAR(500)`, `ip_address VARCHAR(45)`; `occurred_at DATETIME` | Primary key on `id`; indexes on timestamp, user/time, action/time, and target. Writers use `UTC_TIMESTAMP()`. |
 
 ### Relationship diagram
 
@@ -205,6 +208,8 @@ Therefore, one MCQ can be linked to multiple papers without duplicating the ques
 
 The matching permission checks are defined in `lib/admin-auth.ts` and enforced in the API handlers. Content deletion is currently modeled as archiving (`status = 'archived'`) so historical paper links and learner records are preserved.
 
+The Activity Logs navigation entry and `/api/admin/activity-logs` endpoint require the exact `super_admin` role. The feed stores staff actor and target snapshots and supports login, logout, MCQ create/edit/archive/unarchive/delete, and paper create/edit/archive/unarchive/delete event types. Existing content APIs use archive in place of permanent deletion, so their `DELETE` method is recorded as an archive; there is no permanent-delete route. Summary counts and last-login timestamps are displayed in UTC. Database schema change: migration 009.
+
 Typical content workflow:
 
 1. Create a subject, then its topics.
@@ -233,6 +238,7 @@ All endpoints are Next.js Route Handlers under `app/api`. Admin endpoints requir
 |---|---|---|
 | `/api/admin/login` | `POST` | Verify bootstrap or database admin credentials and issue an HTTP-only session cookie. |
 | `/api/admin/logout` | `POST` | Clear the admin session cookie. |
+| `/api/admin/activity-logs` | `GET` | Super Admin-only activity feed, filtered by staff member, action, and date range, with newest-first pagination, per-user totals, and last login. |
 | `/api/admin/questions` | `GET`, `POST`, `PATCH`, `DELETE` | List questions and options; create/update an MCQ and its paper links; publish or archive according to permission. |
 | `/api/admin/questions/bulk` | `POST` | Atomically import MCQs or perform permission-checked multi-question category, review, paper-link, publish, and archive actions. |
 | `/api/admin/questions/similar` | `POST` | Return likely same-topic duplicate candidates for a non-blocking entry warning. |

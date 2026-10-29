@@ -187,7 +187,7 @@ export async function POST(request: Request) {
   } finally {
     connection.release();
   }
-  await auditAdmin(principal, request, "create", "question", questionId, null, { topicId: parsed.topicId, status });
+  await auditAdmin(principal, request, "create", "question", questionId, null, { topicId: parsed.topicId, status, title: parsed.prompt });
   refreshQuestions();
   return NextResponse.json({ ok: true, id: questionId });
 }
@@ -313,7 +313,7 @@ export async function PATCH(request: Request) {
     await connection.commit();
   } catch (cause) { await connection.rollback(); console.error("Admin question update failed", cause); return NextResponse.json({ error: "The question could not be updated; no changes were saved." }, { status: 500 }); }
   finally { connection.release(); }
-  await auditAdmin(principal, request, "update", "question", id, { status: oldStatus, version: expectedVersion }, { status: newStatus, topicId: parsed.topicId, revisionId, adminStatusOverride: keepStatus && (principal.role === "admin" || principal.role === "super_admin"), removedFromPublishedPapers: affectedPapers.map((paper) => paper.id) });
+  await auditAdmin(principal, request, "update", "question", id, { status: oldStatus, version: expectedVersion }, { status: newStatus, topicId: parsed.topicId, title: parsed.prompt, revisionId, adminStatusOverride: keepStatus && (principal.role === "admin" || principal.role === "super_admin"), removedFromPublishedPapers: affectedPapers.map((paper) => paper.id) });
   refreshQuestions();
   return NextResponse.json({ ok: true, status: newStatus, version: expectedVersion + 1 });
 }

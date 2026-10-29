@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { AdminSignOutButton } from "@/components/AdminSignOutButton";
 import { AdminQuestionWorkspace } from "@/components/AdminQuestionWorkspace";
 import { AdminExams } from "@/components/AdminExams";
+import { AdminActivityLogs } from "@/components/AdminActivityLogs";
 import type { AdminCapabilities, AdminPrincipal, AdminRole } from "@/lib/admin-auth";
 
 type Status = "draft" | "in_review" | "approved" | "published" | "rejected" | "archived";
@@ -16,9 +17,9 @@ type PickerQuestion = { id: number; topicId: number; topicName: string; subjectI
 type AdminUser = { id: string; name: string; email: string; role: AdminRole; status: "active" | "inactive"; last_login_at?: string | null };
 type ExamRow = { id: number; name: string; slug: string };
 type DashboardStats = { statuses: Record<string, number>; categories: Array<{ subject_name: string; topic_name: string; question_count: number }>; emptyCategories: Array<{ subject_name: string; topic_name: string; question_count: number }>; shortPapers: Array<{ id: number; title: string; expected_question_count: number; question_count: number }> };
-type Tab = "overview" | "questions" | "review" | "categories" | "exams" | "papers" | "team";
+type Tab = "overview" | "questions" | "review" | "categories" | "exams" | "papers" | "team" | "activity";
 
-const tabLabels: Record<Tab, string> = { overview: "Overview", questions: "MCQ bank", review: "Review queue", categories: "Categories", exams: "Exams", papers: "Past papers", team: "Team & roles" };
+const tabLabels: Record<Tab, string> = { overview: "Overview", questions: "MCQ bank", review: "Review queue", categories: "Categories", exams: "Exams", papers: "Past papers", team: "Team & roles", activity: "Activity logs" };
 const roleLabels: Record<AdminRole, string> = { data_entry: "Data Entry", reviewer: "Reviewer", publisher: "Publisher", admin: "Admin", super_admin: "Super Admin" };
 
 function NavIcon({ tab }: { tab: Tab }) {
@@ -29,6 +30,7 @@ function NavIcon({ tab }: { tab: Tab }) {
   if (tab === "categories") return <svg {...props}><path d="M4 7h7l2 2h7v10H4z" /></svg>;
   if (tab === "exams") return <svg {...props}><path d="M12 3 4 7v6c0 4.2 3.2 6.8 8 8 4.8-1.2 8-3.8 8-8V7z" /></svg>;
   if (tab === "papers") return <svg {...props}><path d="M7 3h7l5 5v13H7z" /><path d="M14 3v5h5M9 13h6M9 17h6" /></svg>;
+  if (tab === "activity") return <svg {...props}><path d="M4 19V5M4 19h16" /><path d="m7 15 3-4 3 2 5-7" /></svg>;
   return <svg {...props}><path d="M16 19v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1" /><circle cx="9.5" cy="7.5" r="3" /><path d="M20 8v6M17 11h6" /></svg>;
 }
 
@@ -120,7 +122,8 @@ export function AdminDashboard({ principal, capabilities }: { principal: AdminPr
     ...(capabilities.manageCategories ? ["categories" as const] : []),
     ...(capabilities.managePapers ? ["exams" as const, "papers" as const] : []),
     ...(capabilities.manageUsers ? ["team" as const] : []),
-  ], [capabilities.manageCategories, capabilities.managePapers, capabilities.manageUsers, capabilities.reviewMcqs]);
+    ...(principal.role === "super_admin" ? ["activity" as const] : []),
+  ], [capabilities.manageCategories, capabilities.managePapers, capabilities.manageUsers, capabilities.reviewMcqs, principal.role]);
 
   async function perform(action: () => Promise<unknown>, success: string) {
     setLoadError("");
@@ -153,7 +156,7 @@ export function AdminDashboard({ principal, capabilities }: { principal: AdminPr
           <div className="admin-topbar-actions"><span className="admin-topbar-user"><span className="admin-avatar">{principal.name.slice(0, 1).toUpperCase()}</span><span className="admin-topbar-meta"><strong>{principal.name}</strong><small>{roleLabels[principal.role]}</small></span></span><a className="button button-light" href="/admin/password">Password</a><button className="button button-light admin-refresh" type="button" onClick={() => void refresh()} disabled={loading}>{loading ? "Refreshing…" : "Refresh"}</button></div>
         </header>
         <main className="admin-content-area">
-          <div className="admin-section-intro"><div><p className="admin-kicker">Workspace</p><h1>{tabLabels[tab]}</h1><p>{tab === "overview" ? "See what needs attention, then jump into categories, papers, or the MCQ bank." : tab === "questions" ? "Set the category once, then add questions one by one or from a paste." : tab === "review" ? "Review submitted questions and record a decision." : tab === "categories" ? "Subjects hold topics. Every MCQ belongs to one topic." : tab === "exams" ? "Keep exam bodies consistent before you build papers." : tab === "papers" ? "Create a paper, then add MCQs from the bank and set their order." : "Manage staff access and content permissions."}</p></div>{(tab === "overview" || tab === "questions") && capabilities.createMcqs && <button type="button" className="button button-primary" onClick={() => { setGlobalSearch(""); setTab("questions"); }}>Add MCQs</button>}{tab === "papers" && capabilities.managePapers && <button type="button" className="button button-primary" onClick={() => { setTab("papers"); setPaperComposeToken((current) => current + 1); }}>Create paper</button>}</div>
+          <div className="admin-section-intro"><div><p className="admin-kicker">Workspace</p><h1>{tabLabels[tab]}</h1><p>{tab === "overview" ? "See what needs attention, then jump into categories, papers, or the MCQ bank." : tab === "questions" ? "Set the category once, then add questions one by one or from a paste." : tab === "review" ? "Review submitted questions and record a decision." : tab === "categories" ? "Subjects hold topics. Every MCQ belongs to one topic." : tab === "exams" ? "Keep exam bodies consistent before you build papers." : tab === "papers" ? "Create a paper, then add MCQs from the bank and set their order." : tab === "team" ? "Manage staff access and content permissions." : "Review staff sign-ins and content changes."}</p></div>{(tab === "overview" || tab === "questions") && capabilities.createMcqs && <button type="button" className="button button-primary" onClick={() => { setGlobalSearch(""); setTab("questions"); }}>Add MCQs</button>}{tab === "papers" && capabilities.managePapers && <button type="button" className="button button-primary" onClick={() => { setTab("papers"); setPaperComposeToken((current) => current + 1); }}>Create paper</button>}</div>
           <ErrorMessage>{loadError}</ErrorMessage>
           {loading && !subjects.length && !questions.length && !papers.length ? <div className="loading-panel">Loading admin records…</div> : null}
           {tab === "overview" && <OverviewPanel subjects={subjects} topics={topics} questions={questions} papers={papers} users={users} metrics={dashboardStats} canManageCategories={capabilities.manageCategories} canManagePapers={capabilities.managePapers} canManageUsers={capabilities.manageUsers} canCreateMcqs={capabilities.createMcqs} canReviewMcqs={capabilities.reviewMcqs} onSelect={setTab} />}
@@ -162,6 +165,7 @@ export function AdminDashboard({ principal, capabilities }: { principal: AdminPr
           {tab === "exams" && capabilities.managePapers && <AdminExams exams={exams} onSave={(body, method) => perform(() => sendAdmin("/api/admin/exams", method, body), "Exam saved.")} />}
           {tab === "papers" && capabilities.managePapers && <PapersPanel papers={papers} exams={exams} subjects={subjects} topics={topics} composeToken={paperComposeToken} canEdit={capabilities.managePapers} canPublish={capabilities.publishContent} canDelete={capabilities.managePapers} onSave={(body, method) => perform(() => sendAdmin("/api/admin/papers", method, body), "Paper saved.")} onStatus={(id, status) => perform(() => sendAdmin("/api/admin/papers", "PATCH", { id, status }), `Paper ${status}.`)} onReorder={(paperId, questionIds) => perform(() => sendAdmin("/api/admin/papers/reorder", "POST", { paperId, questionIds }), "Question order saved.")} onAddMcqs={(paperId) => { setEntryPaperId(paperId); setTab("questions"); }} />}
           {tab === "team" && capabilities.manageUsers && <TeamPanel users={users} currentId={principal.id} isSuperAdmin={principal.role === "super_admin"} onSave={(body, method) => perform(() => sendAdmin("/api/admin/users", method, body), "User account saved.")} />}
+          {tab === "activity" && principal.role === "super_admin" && <AdminActivityLogs />}
         </main>
       </div>
     </div>
@@ -323,8 +327,10 @@ function PapersPanel({ papers, exams, subjects, topics, composeToken, canEdit, c
   function reset() { setEditing(null); setExamName(""); setTitle(""); setSlug(""); setYear(String(new Date().getFullYear())); setDescription(""); setStatus("draft"); setPaperType("Past paper"); setShiftSession(""); setExpectedQuestionCount(""); setSelectedQuestions([]); setBuilderOpen(false); }
   useEffect(() => {
     if (!composeToken) return;
-    setBuilderOpen(true);
-    const timer = window.setTimeout(() => document.getElementById("create-paper-start")?.scrollIntoView({ behavior: "smooth", block: "start" }), 40);
+    const timer = window.setTimeout(() => {
+      setBuilderOpen(true);
+      document.getElementById("create-paper-start")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 40);
     return () => window.clearTimeout(timer);
   }, [composeToken]);
   async function selectPaper(paper: AdminPaper) {

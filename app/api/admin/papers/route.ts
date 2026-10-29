@@ -68,10 +68,10 @@ async function savePaper(request: Request, body: Record<string, unknown> | null,
       );
       if (Number(draftQuestions[0]?.count ?? 0) > 0) return NextResponse.json({ error: "Publish or remove every draft question before publishing this paper." }, { status: 400 });
     }
-    const [exists] = await db.execute<Array<RowDataPacket & { id: number }>>("SELECT id FROM papers WHERE id = ? LIMIT 1", [id]);
+    const [exists] = await db.execute<Array<RowDataPacket & { id: number; title: string; status: string }>>("SELECT id, title, status FROM papers WHERE id = ? LIMIT 1", [id]);
     if (!exists[0]) return NextResponse.json({ error: "Past paper not found." }, { status: 404 });
     await db.execute("UPDATE papers SET status = ?, updated_by = ? WHERE id = ?", [body.status, principal.id, id]);
-    await auditAdmin(principal, request, body.status, "paper", id, null, { status: body.status });
+    await auditAdmin(principal, request, body.status, "paper", id, { status: exists[0].status, title: exists[0].title }, { status: body.status, title: exists[0].title });
     refreshPapers();
     return NextResponse.json({ ok: true });
   }
@@ -82,6 +82,7 @@ async function savePaper(request: Request, body: Record<string, unknown> | null,
   if (!paper || (update && (!Number.isInteger(id) || id < 1))) return NextResponse.json({ error: "Complete the exam, title, year, description, slug, and select at least one question." }, { status: 400 });
   const status = requestedStatus(body?.status, principal);
   let savedPaperId = id;
+  let auditOld: Record<string, unknown> | null = null;
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
@@ -102,11 +103,12 @@ async function savePaper(request: Request, body: Record<string, unknown> | null,
     }
     let paperId = id;
     if (update) {
-      const [exists] = await connection.execute<Array<RowDataPacket & { id: number }>>("SELECT id FROM papers WHERE id = ? LIMIT 1 FOR UPDATE", [id]);
+      const [exists] = await connection.execute<Array<RowDataPacket & { id: number; title: string; status: string }>>("SELECT id, title, status FROM papers WHERE id = ? LIMIT 1 FOR UPDATE", [id]);
       if (!exists[0]) {
         await connection.rollback();
         return NextResponse.json({ error: "Past paper not found." }, { status: 404 });
       }
+      auditOld = { status: exists[0].status, title: exists[0].title };
       await connection.execute(
         "UPDATE papers SET exam_id = ?, title = ?, slug = ?, year = ?, paper_type = ?, shift_session = ?, expected_question_count = ?, description = ?, status = ?, updated_by = ? WHERE id = ?",
         [examId, paper.title, paper.slug, paper.year, paper.type, paper.shiftSession, paper.expectedQuestionCount, paper.description, status, principal.id, id],
@@ -132,7 +134,7 @@ async function savePaper(request: Request, body: Record<string, unknown> | null,
   } finally {
     connection.release();
   }
-  await auditAdmin(principal, request, update ? "update" : "create", "paper", update ? id : savedPaperId, null, { title: paper.title, status, questionIds: paper.questionIds });
+  await auditAdmin(principal, request, update ? "update" : "create", "paper", update ? id : savedPaperId, auditOld, { title: paper.title, status, questionIds: paper.questionIds });
   refreshPapers();
   return NextResponse.json({ ok: true });
 }
@@ -158,8 +160,10 @@ export async function DELETE(request: Request) {
   const body = await request.json().catch(() => null);
   const id = Number(body?.id);
   if (!Number.isInteger(id) || id < 1) return NextResponse.json({ error: "Choose a valid past paper." }, { status: 400 });
+  const [existing] = await db.execute<Array<RowDataPacket & { title: string; status: string }>>("SELECT title, status FROM papers WHERE id = ? LIMIT 1", [id]);
+  if (!existing[0]) return NextResponse.json({ error: "Past paper not found." }, { status: 404 });
   await db.execute("UPDATE papers SET status = 'archived', updated_by = ? WHERE id = ?", [principal.id, id]);
-  await auditAdmin(principal, request, "archive", "paper", id, null, { status: "archived" });
+  await auditAdmin(principal, request, "archive", "paper", id, { title: existing[0].title, status: existing[0].status }, { title: existing[0].title, status: "archived" });
   refreshPapers();
   return NextResponse.json({ ok: true });
 }

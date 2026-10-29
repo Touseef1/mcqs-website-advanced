@@ -8,7 +8,7 @@ function clientIp(request: Request) { const value = request.headers.get("x-forwa
 export async function POST(request: Request) {
   const csrf = csrfFailure(request);
   if (csrf) return csrf;
-  if (!adminLoginConfigured() || !hasDatabase || !db) return NextResponse.json({ error: "Configure MySQL, apply migrations through 006, then set ADMIN_PASSWORD and SESSION_SECRET." }, { status: 503 });
+  if (!adminLoginConfigured() || !hasDatabase || !db) return NextResponse.json({ error: "Configure MySQL, apply migrations through 009, then set ADMIN_PASSWORD and SESSION_SECRET." }, { status: 503 });
   const body = await request.json().catch(() => null);
   const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
   const password = typeof body?.password === "string" ? body.password : "";
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
     if (user) await db.execute("UPDATE admin_users SET failed_login_attempts = failed_login_attempts + 1, locked_until = IF(failed_login_attempts >= 5, DATE_ADD(NOW(), INTERVAL 15 MINUTE), locked_until) WHERE id = ?", [user.id]);
     return NextResponse.json({ error: "The email or password is incorrect." }, { status: 401 });
   }
-  await db.execute("UPDATE admin_users SET failed_login_attempts = 0, locked_until = NULL, last_login_at = NOW() WHERE id = ?", [user.id]);
+  await db.execute("UPDATE admin_users SET failed_login_attempts = 0, locked_until = NULL, last_login_at = UTC_TIMESTAMP() WHERE id = ?", [user.id]);
   const principal: AdminPrincipal = { id: String(user.id), name: user.name, email: user.email, role: user.role, mustChangePassword: Boolean(user.must_change_password) };
   await auditAdmin(principal, request, "login", "admin_user", Number(principal.id), null, { email });
   const response = NextResponse.json({ ok: true, mustChangePassword: principal.mustChangePassword });

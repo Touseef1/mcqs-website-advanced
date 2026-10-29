@@ -56,6 +56,7 @@ MCQPath is a search-friendly MCQ and exam-practice website for learners in Pakis
    sudo mysql < sql/migrations/006_admin_roles_workflow_security.sql
    sudo mysql < sql/migrations/007_platform_improvements.sql
    sudo mysql < sql/migrations/008_workflow_integrity.sql
+   sudo mysql < sql/migrations/009_admin_activity_logs.sql
    sudo mysql < sql/seed.sql
    ```
 
@@ -75,7 +76,7 @@ MCQPath is a search-friendly MCQ and exam-practice website for learners in Pakis
 
    Open [http://localhost:3000](http://localhost:3000). The admin area is at `/admin`.
 
-Without MySQL, the site shows category placeholders only; it does not show generated MCQs or sample papers. The admin area requires MySQL and migrations `001` through `008` in order, as detailed in `docs/MIGRATIONS.md`. Learner registration, bookmarks, and quiz history additionally require migration `003` and `SESSION_SECRET`.
+Without MySQL, the site shows category placeholders only; it does not show generated MCQs or sample papers. The admin area requires MySQL and migrations `001` through `009` in order, as detailed in `docs/MIGRATIONS.md`. Learner registration, bookmarks, and quiz history additionally require migration `003` and `SESSION_SECRET`.
 
 Every MCQ needs an exam/source reference in the admin form. MCQs without this reference cannot be published. MCQs follow the shared draft, review, approval, publication, rejection, and archive state machine. Data Entry staff can edit their own drafts or rejected items and add MCQs to papers; inline paper creation requires the separate `paper.quickcreate` permission. The paper builder searches the bank and orders questions. See `docs/ADMIN_ROLES.md` and `docs/MIGRATIONS.md` for permissions and upgrades.
 
@@ -85,7 +86,7 @@ Sign in at `/admin` with the bootstrap credentials in `.env.local`. The bootstra
 
 | Role | Access |
 | --- | --- |
-| Super Admin | Full access, including Super Admin team management and system settings |
+| Super Admin | Full access, including Super Admin team management, system settings, and staff activity logs |
 | Admin | Manage content and regular team accounts; cannot manage Super Admins or system settings |
 | Data Entry | Create MCQs, edit own draft/rejected MCQs, and add MCQs to papers |
 | Reviewer | Edit and review submitted MCQs; approve or reject with a comment |
