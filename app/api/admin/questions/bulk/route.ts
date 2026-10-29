@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 6194)
-Total output lines: 309
-
 import { revalidatePath, revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import type { RowDataPacket } from "mysql2";
@@ -125,7 +122,112 @@ export async function POST(request: Request) {
       }
       for (const item of parsed as InputQuestion[]) {
         const [insert] = await connection.execute(
-          `INSERT INTO questions (topic_id, questi…2194 tokens truncated…rmission) => requirePermission(principal, permission));
+          `INSERT INTO questions (topic_id, question_text, explanation, source_note, correct_choice, difficulty, status, created_by, updated_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [topicId, item.prompt, item.explanation, sourceNote, item.correctChoice, difficulty, status, principal.id, principal.id],
+        );
+        const questionId = Number((insert as { insertId: number }).insertId);
+        createdIds.push(questionId);
+        for (let index = 0; index < labels.length; index++) {
+          await connection.execute("INSERT INTO choices (question_id, label, choice_text) VALUES (?, ?, ?)", [questionId, labels[index], item.choices[index]]);
+        }
+      }
+      if (paperId !== null) {
+        const linked = await appendToPaper(connection, paperId, createdIds);
+        if (linked.error) {
+          await connection.rollback();
+          return error(linked.error);
+        }
+      }
+      await connection.commit();
+    } catch (cause) {
+      await connection.rollback();
+      console.error("Bulk MCQ import failed", cause);
+    return NextResponse.json({ error: "Bulk import rolled back; no rows were saved.", results: inputs.map((_, index) => ({ row: index + 1, ok: false, error: "Rolled back because the transaction failed." })) }, { status: 500 });
+    } finally {
+      connection.release();
+    }
+    await auditAdmin(principal, request, "bulk_create", "question", null, null, { questionIds: createdIds, topicId, paperId });
+    refreshContent();
+    return NextResponse.json({ ok: true, ids: createdIds, count: createdIds.length, results: createdIds.map((id, index) => ({ row: index + 1, id, ok: true })) });
+  }
+
+  const ids = parseIds(body?.ids);
+  if (!ids) return error("Select between 1 and 100 MCQs.");
+  const topicId = Number(body?.topicId);
+  const paperId = Number(body?.paperId);
+
+  if (action === "change-category" && !requirePermission(principal, "mcq.edit_any") && !requirePermission(principal, "mcq.edit_own")) return error("Your role cannot edit questions.", 403);
+  if (action === "submit-review" && !requirePermission(principal, "mcq.edit_own")) return error("Your role cannot submit questions for review.", 403);
+  if (action === "approve" && !requirePermission(principal, "mcq.review")) return error("Your role cannot approve submitted MCQs.", 403);
+  if (action === "publish" && !requirePermission(principal, "mcq.publish")) return error("Only Paper Managers and Super Admins can publish questions.", 403);
+  if (action === "archive" && !requirePermission(principal, "mcq.archive")) return error("Only the Super Admin can archive questions.", 403);
+  if (action === "add-to-paper" && !requirePermission(principal, "paper.add_questions")) return error("Your role cannot add questions to past papers.", 403);
+  if (action === "remove-from-paper" && !requirePermission(principal, "paper.manage")) return error("Your role cannot manage past-paper questions.", 403);
+  if (!["change-category", "submit-review", "approve", "publish", "archive", "add-to-paper", "remove-from-paper"].includes(action)) return error("Choose a supported bulk action.");
+  if (action === "change-category" && (!Number.isSafeInteger(topicId) || topicId < 1)) return error("Choose a valid category.");
+  if ((action === "add-to-paper" || action === "remove-from-paper") && (!Number.isSafeInteger(paperId) || paperId < 1)) return error("Choose a valid past paper.");
+
+  const connection = await db.getConnection();
+  const selfApprovalOverrideIds: number[] = [];
+  try {
+    await connection.beginTransaction();
+    const marks = ids.map(() => "?").join(",");
+    const [questions] = await connection.execute<Array<RowDataPacket & { id: number; status: string; source_note: string; topic_status: string; subject_status: string; created_by: number | null }>>(
+      `SELECT q.id, q.status, q.source_note, q.created_by, t.status AS topic_status, s.status AS subject_status
+       FROM questions q JOIN topics t ON t.id = q.topic_id JOIN subjects s ON s.id = t.subject_id
+       WHERE q.id IN (${marks}) FOR UPDATE`, ids,
+    );
+    if (questions.length !== ids.length) {
+      await connection.rollback();
+      return NextResponse.json({ error: "Bulk action rolled back; one or more MCQs no longer exist.", results: ids.map((id) => ({ id, ok: false, error: "Missing or no longer available." })) }, { status: 404 });
+    }
+    const rowResults: Array<{ id: number; ok: boolean; error?: string }> = [];
+    if (action === "change-category") {
+      const [topic] = await connection.execute<Array<RowDataPacket & { id: number }>>(
+        `SELECT t.id FROM topics t JOIN subjects s ON s.id = t.subject_id
+         WHERE t.id = ? AND t.status != 'archived' AND s.status != 'archived'`, [topicId],
+      );
+      for (const question of questions) {
+        const editable = question.status !== "archived" && canActorEditQuestion(principal, question.created_by, question.status, requirePermission(principal, "mcq.edit_any"), requirePermission(principal, "mcq.edit_own"));
+        const target = statusAfterQuestionEdit(question.status as QuestionStatus, false);
+        const transition = target === question.status ? null : getQuestionTransition(question.status, target);
+        const statusChange = target === question.status || Boolean(transition && requirePermission(principal, transition.permission));
+        if (!topic[0]) rowResults.push({ id: question.id, ok: false, error: "Choose an active category." });
+        else if (!editable) rowResults.push({ id: question.id, ok: false, error: "You can edit only your own draft or rejected MCQs." });
+        else if (!statusChange) rowResults.push({ id: question.id, ok: false, error: `Illegal edit transition from ${question.status}.` });
+        else rowResults.push({ id: question.id, ok: true });
+      }
+      if (rowResults.some((row) => !row.ok)) {
+        await connection.rollback();
+        return NextResponse.json({ error: "Bulk action rolled back. Fix the listed rows and retry; no MCQs were changed.", results: rowResults.map((row) => row.ok ? { ...row, ok: false, error: "Rolled back because another row failed." } : row) }, { status: 400 });
+      }
+      for (const question of questions) {
+        const target = statusAfterQuestionEdit(question.status as QuestionStatus, false);
+        if (target !== question.status) {
+          const [publishedPapers] = await connection.execute<Array<RowDataPacket & { id: number; title: string }>>(
+            "SELECT p.id, p.title FROM paper_questions pq JOIN papers p ON p.id = pq.paper_id WHERE pq.question_id = ? AND p.status = 'published' FOR UPDATE", [question.id],
+          );
+          if (publishedPapers.length && body?.confirmPaperRemoval !== true) {
+            await connection.rollback();
+            return NextResponse.json({ error: "Bulk action rolled back. Confirm removal from published papers before changing these MCQs.", results: questions.map((item) => ({ id: item.id, ok: false, error: item.id === question.id ? "Published paper removal confirmation required." : "Rolled back because another row failed." })), affectedPapers: publishedPapers }, { status: 409 });
+          }
+          if (publishedPapers.length) await connection.execute("DELETE FROM paper_questions WHERE question_id = ? AND paper_id IN (SELECT id FROM papers WHERE status = 'published')", [question.id]);
+        }
+        await connection.execute("UPDATE questions SET topic_id = ?, status = ?, updated_by = ?, version = version + 1 WHERE id = ?", [topicId, target, principal.id, question.id]);
+      }
+    } else if (action === "submit-review") {
+      for (const question of questions) {
+        const valid = canActorTransition(principal, question.created_by, question.status, "in_review", (permission) => requirePermission(principal, permission));
+        rowResults.push({ id: question.id, ok: Boolean(valid), ...(!valid ? { error: "Only the owner can submit a draft for review." } : {}) });
+      }
+      if (rowResults.some((row) => !row.ok)) { await connection.rollback(); return NextResponse.json({ error: "Bulk action rolled back. No MCQs were submitted.", results: rowResults.map((row) => row.ok ? { ...row, ok: false, error: "Rolled back because another row failed." } : row) }, { status: 400 }); }
+      for (const question of questions) await connection.execute("UPDATE questions SET status = 'in_review', updated_by = ?, version = version + 1 WHERE id = ?", [principal.id, question.id]);
+    } else if (action === "approve") {
+      const reviewNote = typeof body?.reviewNote === "string" ? body.reviewNote.trim() : "";
+      for (const question of questions) {
+        const self = isSelfApproval(principal, question.created_by, "approved");
+        const valid = Boolean(reviewNote) && canActorTransition(principal, question.created_by, question.status, "approved", (permission) => requirePermission(principal, permission));
         if (valid && self) selfApprovalOverrideIds.push(question.id);
         rowResults.push({ id: question.id, ok: Boolean(valid), ...(!valid ? { error: !reviewNote ? "Review comment is required." : self && principal.role !== "super_admin" ? "You cannot approve your own MCQ." : "Only in-review MCQs can be approved." } : {}) });
       }
