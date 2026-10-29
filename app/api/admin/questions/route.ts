@@ -2,7 +2,7 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import type { RowDataPacket } from "mysql2";
 import { getAdminPrincipal, requirePermission } from "@/lib/admin-auth";
-import { canActorEditQuestion, canActorTransition, getQuestionTransition, isSelfApproval, statusAfterQuestionEdit, type QuestionStatus } from "@/lib/admin-workflow";
+import { canActorEditQuestion, canActorTransition, getActorQuestionTransition, getQuestionTransition, isSelfApproval, statusAfterQuestionEdit, type QuestionStatus } from "@/lib/admin-workflow";
 import { db, hasDatabase } from "@/lib/db";
 import { auditAdmin } from "@/lib/admin-security";
 
@@ -217,7 +217,7 @@ export async function PATCH(request: Request) {
       );
       const item = rows[0];
       if (!item) { await connection.rollback(); return NextResponse.json({ error: "Question not found." }, { status: 404 }); }
-      const allowed = getQuestionTransition(item.status, target);
+      const allowed = getActorQuestionTransition(principal, item.status, target);
       if (!allowed) { await connection.rollback(); return NextResponse.json({ error: `Illegal question transition: ${item.status} → ${target}.` }, { status: 409 }); }
       if (!canActorTransition(principal, item.created_by, item.status, target, (permission) => requirePermission(principal, permission))) { await connection.rollback(); return NextResponse.json({ error: isSelfApproval(principal, item.created_by, target) ? "You cannot approve or publish your own MCQ." : `Your role or ownership does not allow you to ${allowed.action} this MCQ.` }, { status: 403 }); }
       const note = typeof body.reviewNote === "string" ? body.reviewNote.trim().slice(0, 2000) : "";

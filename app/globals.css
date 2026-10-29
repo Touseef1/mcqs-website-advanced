@@ -707,6 +707,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .mcq-session-table td small, .mcq-bank-table td small { display: block; margin-top: 4px; color: #8b93a0; font-size: 10px; line-height: 1.45; }
 .mcq-session-table select, .mcq-bank-filters select, .mcq-bulk-control select { min-width: 140px; max-width: 250px; min-height: 34px; padding: 5px 8px; border: 1px solid #e2e6ec; border-radius: 6px; background: #fff; color: #596373; font: inherit; font-size: 11px; }
 .mcq-row-actions { min-width: 135px; display: grid; justify-items: start; gap: 5px; }
+.mcq-review-actions { display: grid; gap: 6px; min-width: 180px; }
+.mcq-review-actions input, .mcq-bulk-control input { min-height: 34px; width: 100%; }
+.mcq-review-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
 .mcq-row-actions button:disabled { opacity: .4; cursor: not-allowed; }
 .text-danger { color: #b85e58 !important; }
 .mcq-session-table tr.is-archived { opacity: .55; }

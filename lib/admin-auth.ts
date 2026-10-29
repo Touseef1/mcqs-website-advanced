@@ -1,5 +1,6 @@
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
+import { connection } from "next/server";
 import type { RowDataPacket } from "mysql2";
 import { db, hasDatabase } from "@/lib/db";
 
@@ -68,6 +69,8 @@ function decodeSession(token?: string): (AdminPrincipal & { issuedAt: number; se
 
 export async function getAdminPrincipal(): Promise<AdminPrincipal | null> {
   if (!process.env.SESSION_SECRET || !hasDatabase || !db) return null;
+  // Session age uses the current time. Wait for the request so prerender does not read the clock.
+  await connection();
   const token = decodeSession((await cookies()).get(ADMIN_COOKIE)?.value); if (!token) return null;
   const [rows] = await db.execute<Array<RowDataPacket & { id: number; name: string; email: string; role: AdminRole; status: string; session_version: number; must_change_password: number }>>(
     "SELECT id, name, email, role, status, session_version, must_change_password FROM admin_users WHERE id = ? LIMIT 1", [token.id],

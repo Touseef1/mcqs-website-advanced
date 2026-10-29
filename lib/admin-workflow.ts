@@ -24,6 +24,16 @@ export function getQuestionTransition(from: string, to: string): QuestionTransit
   return ALLOWED_QUESTION_TRANSITIONS[from as QuestionStatus][to as QuestionStatus] ?? null;
 }
 
+/** Super Admin may publish their own or another person's MCQ without waiting on the review queue. */
+export function getActorQuestionTransition(actor: TransitionActor, from: string, to: string): QuestionTransition | null {
+  const direct = getQuestionTransition(from, to);
+  if (direct) return direct;
+  if (actor.role === "super_admin" && to === "published" && (from === "draft" || from === "in_review" || from === "rejected")) {
+    return { permission: "mcq.publish", action: "publish" };
+  }
+  return null;
+}
+
 export function isSelfApproval(actor: TransitionActor, ownerId: number | string | null | undefined, to: string) {
   return (to === "approved" || to === "published") && ownerId != null && String(ownerId) === String(actor.id);
 }
@@ -35,7 +45,7 @@ export function canActorTransition(
   to: string,
   hasPermission: (permission: AdminPermission) => boolean,
 ) {
-  const transition = getQuestionTransition(from, to);
+  const transition = getActorQuestionTransition(actor, from, to);
   if (!transition || !hasPermission(transition.permission)) return false;
   if ((from === "draft" && to === "in_review") || (from === "rejected" && to === "draft")) {
     if (ownerId == null || String(ownerId) !== String(actor.id)) return false;

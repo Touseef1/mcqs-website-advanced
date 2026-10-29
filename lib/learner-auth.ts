@@ -1,5 +1,6 @@
 import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
+import { connection } from "next/server";
 import type { RowDataPacket } from "mysql2";
 import { db, hasDatabase } from "@/lib/db";
 
@@ -50,6 +51,7 @@ function decodeLearnerSession(token?: string): LearnerPrincipal | null {
 }
 
 export async function getLearnerPrincipal(): Promise<LearnerPrincipal | null> {
+  await connection();
   const token = (await cookies()).get(LEARNER_COOKIE)?.value;
   if (!hasDatabase || !db || !process.env.SESSION_SECRET) return null;
   const session = decodeLearnerSession(token);

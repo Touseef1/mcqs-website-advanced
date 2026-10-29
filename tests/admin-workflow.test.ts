@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   ALLOWED_QUESTION_TRANSITIONS,
   canActorTransition,
+  getActorQuestionTransition,
   canActorEditQuestion,
   getQuestionTransition,
   isSelfApproval,
@@ -39,6 +40,10 @@ test("approval and publishing block the owner except for Super Admin", () => {
   assert.equal(canActorTransition(reviewer, 11, "approved", "published", grantAll), false);
   assert.equal(canActorTransition(superAdmin, 11, "in_review", "approved", grantAll), true);
   assert.equal(canActorTransition(superAdmin, 11, "approved", "published", grantAll), true);
+  assert.equal(canActorTransition(superAdmin, 11, "draft", "published", grantAll), true);
+  assert.equal(canActorTransition(superAdmin, 12, "in_review", "published", grantAll), true);
+  assert.equal(getActorQuestionTransition(superAdmin, "draft", "published")?.action, "publish");
+  assert.equal(canActorTransition(reviewer, 12, "draft", "published", grantAll), false);
   assert.equal(canActorTransition(superAdmin, 12, "in_review", "approved", () => false), false);
 });
 

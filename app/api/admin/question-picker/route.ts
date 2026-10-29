@@ -66,6 +66,7 @@ export async function GET(request: Request) {
   if (Number.isSafeInteger(subjectId) && subjectId > 0) { conditions.push("s.id = ?"); values.push(subjectId); }
   if (Number.isSafeInteger(topicId) && topicId > 0) { conditions.push("t.id = ?"); values.push(topicId); }
   if (["draft", "published", "archived"].includes(status)) { conditions.push("q.status = ?"); values.push(status); }
+  else if (status === "active") { conditions.push("q.status != 'archived'"); }
   else if (status !== "all") { conditions.push("q.status IN ('draft', 'published')"); }
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
   const from = "FROM questions q JOIN topics t ON t.id = q.topic_id JOIN subjects s ON s.id = t.subject_id";
