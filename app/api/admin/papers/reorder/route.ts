@@ -49,7 +49,8 @@ export async function POST(request: Request) {
   }
   await auditAdmin(principal, request, "reorder", "paper", paperId, null, { questionIds });
   revalidatePath("/past-papers");
+  revalidatePath("/past-papers/[slug]", "page");
   revalidateTag("papers", "max");
-  revalidateTag("questions", "max");
+  revalidateTag("questions", { expire: 0 });
   return NextResponse.json({ ok: true, count: questionIds.length });
 }

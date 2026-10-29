@@ -12,8 +12,11 @@ function noDatabase() {
 
 function refreshPapers() {
   revalidatePath("/past-papers");
+  revalidatePath("/past-papers/[slug]", "page");
   revalidateTag("papers", "max");
-  revalidateTag("questions", "max");
+  // Paper detail pages cache their linked questions separately. Expire that
+  // data immediately so a newly linked paper does not keep showing an empty set.
+  revalidateTag("questions", { expire: 0 });
 }
 
 function parsePaper(body: Record<string, unknown> | null) {
