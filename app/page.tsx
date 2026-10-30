@@ -71,7 +71,7 @@ export default async function Home() {
 
         <section className="section paper-section">
           <div className="section-heading"><div><span className="eyebrow">TEST YOUR PREPARATION</span><h2>Past papers</h2><p>Attempt source-verified exam papers and review each MCQ.</p></div><Link className="text-link" href="/past-papers">View all papers <span aria-hidden>↗</span></Link></div>
-          <div className="paper-grid">{papers.map((paper) => <Link className="paper-card" href={`/past-papers/${paper.slug}`} key={paper.slug}><span className="paper-card-type">{paper.type} <span>· {paper.year}</span></span><strong>{paper.title}</strong><span className="paper-exam">{paper.exam}</span><span className="paper-card-footer">{paper.topicSlugs.length} topics <b>Open set <span aria-hidden>→</span></b></span></Link>)}</div>
+          <div className="paper-grid">{papers.map((paper) => <Link className="paper-card" href={`/past-papers/${paper.slug}`} key={paper.slug}><span className="paper-card-type">{paper.exam} <span>· {paper.year}</span></span><strong>{paper.title}</strong><span className="paper-exam">{paper.type}</span><span className="paper-card-footer">{paper.publishedQuestionCount} MCQs <b>Open paper <span aria-hidden>→</span></b></span></Link>)}</div>
         </section>
 
         <section className="closing-cta"><span className="closing-star">✳</span><div><span className="eyebrow">YOUR NEXT STEP STARTS HERE</span><h2>Ready when you are.</h2><p>Pick a topic and begin practising for free.</p></div><Link className="button button-primary" href="/subjects">Explore subjects <span aria-hidden>→</span></Link></section>

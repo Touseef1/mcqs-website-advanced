@@ -4,6 +4,7 @@ import type { RowDataPacket } from "mysql2";
 import { getAdminPrincipal, requirePermission } from "@/lib/admin-auth";
 import { canActorEditQuestion, canActorTransition, getQuestionTransition, isSelfApproval, statusAfterQuestionEdit, type QuestionStatus } from "@/lib/admin-workflow";
 import { db, hasDatabase } from "@/lib/db";
+import { linkPublishedQuestionsBySource } from "@/lib/paper-links";
 
 import { auditAdmin, csrfFailure } from "@/lib/admin-security";
 const labels = ["A", "B", "C", "D"] as const;
@@ -115,9 +116,9 @@ export async function POST(request: Request) {
       }
       if (paperId !== null) {
         const [paper] = await connection.execute<Array<RowDataPacket & { id: number; status: string }>>("SELECT id, status FROM papers WHERE id = ? FOR UPDATE", [paperId]);
-        if (!paper[0] || paper[0].status === "archived" || paper[0].status === "published") {
+        if (!paper[0] || paper[0].status === "archived") {
           await connection.rollback();
-          return error("Choose a draft paper, or publish these MCQs before adding them to the published paper.");
+          return error("Choose an active past paper.");
         }
       }
       for (const item of parsed as InputQuestion[]) {
@@ -245,6 +246,7 @@ export async function POST(request: Request) {
         const revisionId = await saveRevision(connection, question.id, principal.id);
         await connection.execute("UPDATE questions SET status = 'published', current_revision_id = ?, updated_by = ?, version = version + 1 WHERE id = ?", [revisionId, principal.id, question.id]);
       }
+      await linkPublishedQuestionsBySource(connection, ids);
     } else if (action === "archive") {
       for (const question of questions) {
         const transition = getQuestionTransition(question.status, "archived");

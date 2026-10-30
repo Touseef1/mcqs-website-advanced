@@ -4,6 +4,7 @@ import type { RowDataPacket } from "mysql2";
 import { getAdminPrincipal, requirePermission } from "@/lib/admin-auth";
 import { canActorEditQuestion, canActorTransition, getActorQuestionTransition, getQuestionTransition, isSelfApproval, statusAfterQuestionEdit, type QuestionStatus } from "@/lib/admin-workflow";
 import { db, hasDatabase } from "@/lib/db";
+import { linkPublishedQuestionsBySource } from "@/lib/paper-links";
 import { auditAdmin } from "@/lib/admin-security";
 
 import { csrfFailure } from "@/lib/admin-security";
@@ -249,6 +250,7 @@ export async function PATCH(request: Request) {
         await connection.rollback();
         return NextResponse.json({ error: "The MCQ status did not change." }, { status: 500 });
       }
+      if (target === "published") await linkPublishedQuestionsBySource(connection, [id]);
       auditOld = { status: item.status, version: item.version };
       auditNew = { status: target, reviewNote: note || null, selfApprovalOverride: principal.role === "super_admin" && isSelfApproval(principal, item.created_by, target), removedFromPublishedPapers: affected.map((paper) => paper.id) };
       await connection.commit();

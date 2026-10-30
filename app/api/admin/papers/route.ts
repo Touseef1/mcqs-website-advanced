@@ -4,6 +4,7 @@ import type { RowDataPacket } from "mysql2";
 import { getAdminPrincipal, requirePermission } from "@/lib/admin-auth";
 import { requestedStatus, slugify, validSlug } from "@/lib/admin-content";
 import { db, hasDatabase } from "@/lib/db";
+import { linkPaperBySource } from "@/lib/paper-links";
 
 import { auditAdmin, csrfFailure } from "@/lib/admin-security";
 function noDatabase() {
@@ -77,6 +78,7 @@ async function savePaper(request: Request, body: Record<string, unknown> | null,
     const [exists] = await db.execute<Array<RowDataPacket & { id: number; title: string; status: string }>>("SELECT id, title, status FROM papers WHERE id = ? LIMIT 1", [id]);
     if (!exists[0]) return NextResponse.json({ error: "Past paper not found." }, { status: 404 });
     await db.execute("UPDATE papers SET status = ?, updated_by = ? WHERE id = ?", [body.status, principal.id, id]);
+    if (body.status === "published") await linkPaperBySource(db, id);
     await auditAdmin(principal, request, body.status, "paper", id, { status: exists[0].status, title: exists[0].title }, { status: body.status, title: exists[0].title });
     refreshPapers();
     return NextResponse.json({ ok: true });
