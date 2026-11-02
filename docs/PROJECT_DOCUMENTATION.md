@@ -171,7 +171,7 @@ This table summarizes the MySQL storage types and the most important rules from 
 | `learner_bookmarks` | `learner_id BIGINT UNSIGNED`; `question_id BIGINT UNSIGNED`; `created_at TIMESTAMP` | Composite primary key `(learner_id, question_id)`; both FKs cascade on delete. |
 | `quiz_attempts` | `id BIGINT UNSIGNED`; `learner_id BIGINT UNSIGNED`; `quiz_title VARCHAR(220)`; `quiz_path VARCHAR(260)`; `score SMALLINT UNSIGNED`; `question_count SMALLINT UNSIGNED`; `elapsed_seconds INT UNSIGNED`; `completed_at TIMESTAMP` | FK to learner; index on learner/completion date. New attempts count selected answers only; progress derives legacy attempted totals from non-null `selected_choice` values. |
 | `learner_wrong_question_dismissals` | `learner_id BIGINT UNSIGNED`; `question_id BIGINT UNSIGNED`; `dismissed_at TIMESTAMP` | Composite primary key; learner/question foreign keys cascade on deletion. A future wrong answer clears the dismissal so the question returns to practice. |
-| `learner_action_tokens` | Learner ID, SHA-256 token hash, verification/reset purpose, expiry, used timestamp | Single-use email verification and password reset tokens; cascades with learner deletion. |
+| `learner_action_tokens` | Learner ID, SHA-256 token hash, legacy verification/reset purpose, expiry, used timestamp | Password reset tokens are active; old verification-purpose records are retained only for schema compatibility. |
 | `quiz_attempt_answers` | Attempt, learner, question/topic IDs, selected/correct choices, correctness flag, nullable `question_revision_id` | Stores answer review and supports weak-topic estimates; the revision link preserves the exact question/options version. One row per question per attempt. |
 | `question_revisions` | `id`, `question_id`, `revision_number`, JSON content snapshot, nullable creator, timestamp | Stores the published question and options snapshot used to preserve historical quiz results. |
 | `api_rate_limit_buckets` | Hashed scope/IP key, window start, hit count | Shared fixed-window counts for sensitive APIs. |
@@ -259,10 +259,9 @@ All endpoints are Next.js Route Handlers under `app/api`. Admin endpoints requir
 | `/api/admin/export` | `GET` | Download a paper or subject/topic category as CSV or PDF. |
 | `/api/admin/users` | `GET`, `POST`, `PATCH` | Manage staff accounts (Super Admin permission). |
 | `/api/quiz/submit` | `POST` | Validate answer submissions, grade on the server, return results, and save signed-in attempts. |
-| `/api/learner/register` | `POST` | Create a learner and sign them in. |
+| `/api/learner/captcha` | `GET` | Issue a short-lived four-digit CAPTCHA challenge for learner sign-in or registration. |
+| `/api/learner/register` | `POST` | Create an automatically verified learner account and sign them in; requires a valid CAPTCHA. |
 | `/api/learner/login` | `POST` | Verify credentials and issue learner session. |
-| `/api/learner/verify-email` | `POST` | Consume a one-time email verification token. |
-| `/api/learner/resend-verification` | `POST` | Send another verification message without revealing whether an account exists. |
 | `/api/learner/forgot-password` | `POST` | Request a one-time password reset link. |
 | `/api/learner/reset-password` | `POST` | Set a new password and invalidate existing learner sessions. |
 | `/api/learner/logout` | `POST` | Clear the learner session. |
@@ -290,7 +289,7 @@ Required environment values are documented in `.env.example`:
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Bootstrap Super Admin login |
 | `SESSION_SECRET` | Long random key used to sign admin and learner sessions |
 | `NEXT_PUBLIC_SITE_URL` | Canonical public site origin; use the production HTTPS URL on deployment |
-| `RESEND_API_KEY`, `RESEND_FROM` | Email delivery for learner verification and password resets; `RESEND_FROM` must be a verified sender. In development without a key, links are logged to the server console. |
+| `RESEND_API_KEY`, `RESEND_FROM` | Email delivery for password reset only; `RESEND_FROM` must be a verified sender. In development without a key, reset links are logged to the server console. |
 
 Apply migrations `001` through `008` in the order documented in [MIGRATIONS.md](./MIGRATIONS.md). Migration `004` restores the missing migration number and adds paper metadata. Migration `005` removes old generated practice content and adds source-reference requirements for questions. Migration `008` adds question versioning and learner-history snapshots. `sql/seed.sql` is optional starter data; do not treat sample rows as official exam papers.
 
@@ -332,14 +331,14 @@ Question and option image uploads accept PNG, JPEG, and WebP only, verify file s
 
 The admin export route downloads all non-archived MCQs attached to a paper, subject, or topic as UTF-8 CSV or PDF. Exports contain prompt, category, four options, question/option image URLs, answer, source note, and explanation. Export requires a signed-in content role.
 
-## 13. Learner verification, recovery, and feedback
+## 13. Learner accounts, recovery, and feedback
 
-New learner accounts are pending until they verify their email. Existing learners are marked verified by migration 007 to avoid locking out accounts created before email verification existed. Verification and reset links use random one-time tokens; only SHA-256 token hashes are stored, verification links expire after 24 hours, and reset links expire after one hour. Password reset increments `learners.session_version`, immediately invalidating sessions. To send actual email, configure `RESEND_API_KEY`, `RESEND_FROM`, and `NEXT_PUBLIC_SITE_URL`. Local development without a Resend key writes the action link to the server terminal.
+Learners are automatically marked as email verified when they register and are signed in immediately. Login and registration both require a four-digit CAPTCHA; the answer is validated server-side against a short-lived, signed, HTTP-only challenge cookie. Both endpoints are rate-limited. Email is sent only for password reset requests. Reset links use random one-time tokens; only SHA-256 token hashes are stored, links expire after one hour, and resetting a password increments `learners.session_version` to invalidate existing sessions. To send reset emails, configure `RESEND_API_KEY`, `RESEND_FROM`, and `NEXT_PUBLIC_SITE_URL`. Local development without a Resend key writes the reset link to the server terminal.
 
 The quiz already showed correct answers and explanations after submission; this update also stores a per-question learner result in `quiz_attempt_answers`. The account progress API uses these rows to suggest topics with at least two answers and below 60% accuracy. Anonymous quiz results still show the review but are not stored for later weakness suggestions.
 
-Rate limits use MySQL fixed-window buckets in `api_rate_limit_buckets` for quiz submissions, learner sign-in, password reset, and verification resend. When MySQL is unavailable, a process-local in-memory fallback is used for local development; production deployments should have MySQL configured so limits are shared by all app processes.
+Rate limits use MySQL fixed-window buckets in `api_rate_limit_buckets` for quiz submissions, learner sign-in and registration, CAPTCHA requests, and password reset. When MySQL is unavailable, a process-local in-memory fallback is used for local development; production deployments should have MySQL configured so limits are shared by all app processes.
 
 ### Learner sign-in refresh
 
-The homepage and navigation CTA retain their previous design. Learner access defaults to Sign in, with a split brand/form layout, explicit Create account switch, password visibility control, recovery and verification links, and guest browsing. Scoped styles support mobile and dark mode. Authentication endpoints are unchanged.
+The homepage and navigation CTA retain their previous design. Learner access defaults to Sign in, with a split brand/form layout, explicit Create account switch, password visibility control, password recovery, a four-digit CAPTCHA, and guest browsing. New accounts are verified automatically. Scoped styles support mobile and dark mode.

@@ -56,28 +56,28 @@ export async function getLearnerPrincipal(): Promise<LearnerPrincipal | null> {
   if (!hasDatabase || !db || !process.env.SESSION_SECRET) return null;
   const session = decodeLearnerSession(token);
   if (!session) return null;
-  const [rows] = await db.execute<(RowDataPacket & LearnerPrincipal & { status: string; email_verified_at: string | null })[]>(
-    "SELECT id, name, email, status, email_verified_at, session_version AS sessionVersion FROM learners WHERE id = ? LIMIT 1", [session.id],
+  const [rows] = await db.execute<(RowDataPacket & LearnerPrincipal & { status: string })[]>(
+    "SELECT id, name, email, status, session_version AS sessionVersion FROM learners WHERE id = ? LIMIT 1", [session.id],
   );
   const learner = rows[0];
-  return learner?.status === "active" && learner.email_verified_at && Number(learner.sessionVersion) === session.sessionVersion
+  return learner?.status === "active" && Number(learner.sessionVersion) === session.sessionVersion
     ? { id: String(learner.id), name: learner.name, email: learner.email, sessionVersion: Number(learner.sessionVersion) } : null;
 }
 
-export type LearnerTokenPurpose = "verify_email" | "reset_password";
+export type LearnerTokenPurpose = "reset_password";
 export async function createLearnerActionToken(learnerId: number, email: string, purpose: LearnerTokenPurpose) {
   if (!db) throw new Error("Database is not configured.");
   const token = randomBytes(32).toString("base64url");
   const tokenHash = createHash("sha256").update(token).digest("hex");
-  await db.execute("UPDATE learner_action_tokens SET used_at = NOW() WHERE learner_id = ? AND purpose = ? AND used_at IS NULL", [learnerId, purpose]);
-  await db.execute("INSERT INTO learner_action_tokens (learner_id, token_hash, purpose, expires_at) VALUES (?, ?, ?, DATE_ADD(UTC_TIMESTAMP(), INTERVAL ? HOUR))", [learnerId, tokenHash, purpose, purpose === "verify_email" ? 24 : 1]);
+  await db.execute("UPDATE learner_action_tokens SET used_at = UTC_TIMESTAMP() WHERE learner_id = ? AND purpose = ? AND used_at IS NULL", [learnerId, purpose]);
+  await db.execute("INSERT INTO learner_action_tokens (learner_id, token_hash, purpose, expires_at) VALUES (?, ?, ?, DATE_ADD(UTC_TIMESTAMP(), INTERVAL 1 HOUR))", [learnerId, tokenHash, purpose]);
   const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(/\/$/, "");
-  const url = `${baseUrl}/account/${purpose === "verify_email" ? "verify" : "reset-password"}?token=${encodeURIComponent(token)}`;
-  const subject = purpose === "verify_email" ? "Verify your MCQPath email" : "Reset your MCQPath password";
-  const action = purpose === "verify_email" ? "Verify email" : "Reset password";
+  const url = `${baseUrl}/account/reset-password?token=${encodeURIComponent(token)}`;
+  const subject = "Reset your MCQPath password";
+  const action = "Reset password";
   if (!process.env.RESEND_API_KEY) {
     if (process.env.NODE_ENV === "production") throw new Error("Email delivery is not configured.");
-    console.info(`[MCQPath ${purpose}] ${email}: ${url}`);
+    console.info(`[MCQPath password reset] ${email}: ${url}`);
     return;
   }
   const from = process.env.RESEND_FROM;
@@ -85,7 +85,7 @@ export async function createLearnerActionToken(learnerId: number, email: string,
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from, to: [email], subject, html: `<p>Use the link below to ${action.toLowerCase()}.</p><p><a href="${url}">${action}</a></p><p>This link expires in ${purpose === "verify_email" ? "24 hours" : "1 hour"}.</p>` }),
+    body: JSON.stringify({ from, to: [email], subject, html: `<p>Use the link below to reset your password.</p><p><a href="${url}">${action}</a></p><p>This link expires in 1 hour.</p>` }),
   });
   if (!response.ok) throw new Error("Email delivery failed.");
 }

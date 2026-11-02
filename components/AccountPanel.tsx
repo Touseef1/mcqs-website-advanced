@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { BookOpen, Bookmark, CircleCheck, ChartNoAxesColumnIncreasing, Eye, EyeOff, ArrowRight } from "lucide-react";
+import { BookOpen, Bookmark, CircleCheck, ChartNoAxesColumnIncreasing, Eye, EyeOff, ArrowRight, RotateCw } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import type { LearnerPrincipal } from "@/lib/learner-auth";
 import { getErrorMessage, parseApiResponse } from "@/lib/error-message";
 import { notify } from "@/lib/toast";
@@ -33,11 +33,40 @@ export function AccountPanel({ learner }: { learner: LearnerPrincipal | null }) 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [captchaCode, setCaptchaCode] = useState("");
+  const [captchaAnswer, setCaptchaAnswer] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [saved, setSaved] = useState<SavedQuestion[]>([]);
+
+  const refreshCaptcha = useCallback(async () => {
+    setCaptchaAnswer("");
+    try {
+      const response = await fetch("/api/learner/captcha", { cache: "no-store" });
+      const data = await parseApiResponse<{ code: string }>(response, "Could not load the security code.");
+      setCaptchaCode(data.code);
+    } catch (cause) {
+      setCaptchaCode("");
+      const text = getErrorMessage(cause, "Could not load the security code.");
+      setError(text);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (learner) return;
+    const controller = new AbortController();
+    void fetch("/api/learner/captcha", { cache: "no-store", signal: controller.signal })
+      .then((response) => parseApiResponse<{ code: string }>(response, "Could not load the security code."))
+      .then((data) => setCaptchaCode(data.code))
+      .catch((cause) => {
+        if (controller.signal.aborted) return;
+        setCaptchaCode("");
+        setError(getErrorMessage(cause, "Could not load the security code."));
+      });
+    return () => controller.abort();
+  }, [learner]);
 
   useEffect(() => {
     if (!learner) return;
@@ -59,15 +88,16 @@ export function AccountPanel({ learner }: { learner: LearnerPrincipal | null }) 
       const response = await fetch(`/api/learner/${mode === "register" ? "register" : "login"}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify({ name, email, password, captchaAnswer }),
       });
       const data = await parseApiResponse<{ message?: string }>(response, "Could not sign in.");
-      if (mode === "register") setMessage(data.message || "Check your inbox to verify your email.");
-      else router.refresh();
+      if (mode === "register") setMessage(data.message || "Account created. Your email is verified and you are signed in.");
+      router.refresh();
     } catch (submitError) {
       const message = getErrorMessage(submitError, "Could not sign in."); setError(message); notify.error(message);
     } finally {
       setBusy(false);
+      if (!learner) void refreshCaptcha();
     }
   }
 
@@ -91,17 +121,18 @@ export function AccountPanel({ learner }: { learner: LearnerPrincipal | null }) 
       <section className="learner-auth-shell">
         <aside className="learner-auth-story"><Link href="/" className="auth-wordmark">MCQPath</Link><h2>Your next step<br />starts here.</h2><ul><li><Bookmark aria-hidden="true" />Save useful questions</li><li><CircleCheck aria-hidden="true" />Review your mistakes</li><li><ChartNoAxesColumnIncreasing aria-hidden="true" />Track subject progress</li></ul><BookOpen className="auth-book-art" strokeWidth={0.8} aria-hidden="true" /></aside>
         <div className="learner-auth-form">
-          <div className="auth-mode-switch" role="group" aria-label="Account access">{(["login", "register"] as const).map(value => <button key={value} type="button" aria-pressed={mode === value} disabled={busy} onClick={() => { setMode(value); setError(""); setMessage(""); setShowPassword(false); }}>{value === "login" ? "Sign in" : "Create account"}</button>)}</div>
+          <div className="auth-mode-switch" role="group" aria-label="Account access">{(["login", "register"] as const).map(value => <button key={value} type="button" aria-pressed={mode === value} disabled={busy} onClick={() => { setMode(value); setError(""); setMessage(""); setShowPassword(false); void refreshCaptcha(); }}>{value === "login" ? "Sign in" : "Create account"}</button>)}</div>
           <h1>{mode === "register" ? "Create your account" : "Welcome back"}</h1><p>{mode === "register" ? "Build a study routine that works for you." : "Sign in to continue your learning journey."}</p>
           <form className="account-form" onSubmit={submit}>
             {mode === "register" && <label>Your name<input autoComplete="name" required minLength={2} maxLength={140} value={name} onChange={event => setName(event.target.value)} /></label>}
             <label>Email address<input type="email" placeholder="you@example.com" autoComplete="email" required maxLength={190} value={email} onChange={event => setEmail(event.target.value)} /></label>
             <div><label htmlFor="learner-password">Password</label><div className="auth-password-field"><input id="learner-password" type={showPassword ? "text" : "password"} autoComplete={mode === "register" ? "new-password" : "current-password"} required minLength={mode === "register" ? 8 : 1} maxLength={128} value={password} onChange={event => setPassword(event.target.value)} /><button type="button" aria-label={showPassword ? "Hide password" : "Show password"} aria-pressed={showPassword} onClick={() => setShowPassword(!showPassword)}>{showPassword ? <EyeOff size={19} /> : <Eye size={19} />}</button></div>{mode === "register" && <small>Use at least 8 characters.</small>}</div>
             {mode === "login" && <Link className="auth-forgot" href="/account/forgot-password">Forgot password?</Link>}
+            <div className="captcha-input-group"><span className="captcha-code" aria-label="Four-digit security code">{captchaCode || "----"}</span><button className="captcha-refresh" type="button" aria-label="Get a new security code" onClick={() => void refreshCaptcha()}><RotateCw size={17} /></button><label htmlFor="learner-captcha">Enter the four digits<input id="learner-captcha" inputMode="numeric" pattern="[0-9]{4}" autoComplete="off" maxLength={4} value={captchaAnswer} onChange={event => setCaptchaAnswer(event.target.value.replace(/\D/g, "").slice(0, 4))} required /></label></div>
             {error && <p className="form-error" role="alert">{error}</p>}{message && <p className="form-success" role="status">{message}</p>}
             <button className="button button-primary" disabled={busy}>{busy ? "Please wait…" : mode === "register" ? "Create account" : "Sign in"}<ArrowRight size={18} aria-hidden="true" /></button>
           </form>
-          <p className="auth-resend">Need a verification email? <Link href="/account/resend-verification">Resend email</Link></p><Link className="auth-guest" href="/subjects">Continue practising without an account</Link>
+          {mode === "register" && <p className="auth-resend">Your email is verified automatically when you create your account.</p>}<Link className="auth-guest" href="/subjects">Continue practising without an account</Link>
         </div>
       </section>
     );

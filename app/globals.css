@@ -1948,6 +1948,11 @@ body:has(.admin-page) { background: #f4f7f5; color: #1c332b; }
 .learner-auth-form .auth-resend { margin-top: 25px; text-align: center; font-size: 13px; }
 .auth-resend a { color: var(--green); text-decoration: underline; }
 .auth-guest { display: block; margin-top: 22px; text-align: center; font-size: 14px; color: var(--green); }
+.learner-auth-form .captcha-input-group { display: grid; grid-template-columns: 1fr auto 1.3fr; align-items: end; gap: 10px; }
+.captcha-code { display: grid; min-height: 48px; place-items: center; border: 1px dashed #9bb7a4; border-radius: 8px; background: repeating-linear-gradient(135deg, rgba(35,107,83,.08) 0 5px, transparent 5px 10px), var(--mint); color: var(--green); font: 800 23px/1 ui-monospace, monospace; letter-spacing: .3em; padding-left: .3em; user-select: none; }
+.captcha-refresh { width: 42px; height: 48px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 8px; background: var(--white); color: var(--green); cursor: pointer; }
+.captcha-input-group label { min-width: 0; }
+.learner-auth-form .captcha-input-group input { min-height: 48px; }
 :root[data-theme="dark"] .learner-auth-story { background: #123e2e; }
 @media (max-width: 760px) {
   .learner-auth-shell { grid-template-columns: 1fr; margin: 20px auto 36px; }
@@ -1955,4 +1960,6 @@ body:has(.admin-page) { background: #f4f7f5; color: #1c332b; }
   .learner-auth-story h2 { margin: 18px 0 0; font-size: 28px; }
   .learner-auth-story ul, .auth-book-art { display: none; }
   .learner-auth-form { padding: 26px 22px; }
+  .learner-auth-form .captcha-input-group { grid-template-columns: minmax(90px,1fr) auto minmax(120px,1.3fr); gap: 7px; }
+  .captcha-code { font-size: 19px; letter-spacing: .2em; padding-left: .2em; }
 }
