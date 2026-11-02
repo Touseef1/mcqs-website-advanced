@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { RowDataPacket } from "mysql2";
-import { getAdminPrincipal, requirePermission, hashAdminPassword, type AdminRole } from "@/lib/admin-auth";
+import { getAdminPrincipal, requirePermission, hashAdminPassword, ROLE_PERMISSIONS, type AdminPermission, type AdminRole } from "@/lib/admin-auth";
 import { safeRole } from "@/lib/admin-content";
 import { db, hasDatabase } from "@/lib/db";
 
@@ -22,7 +22,35 @@ export async function GET() {
       ? "SELECT id, name, email, role, status, created_at, last_login_at FROM admin_users ORDER BY created_at DESC, id DESC"
       : "SELECT id, name, email, role, status, created_at, last_login_at FROM admin_users WHERE role != 'super_admin' ORDER BY created_at DESC, id DESC",
   );
-  return NextResponse.json({ users: users.map((user) => ({ ...user, id: String(user.id) })) }, { headers: { "Cache-Control": "no-store" } });
+  const ids = users.map((user) => user.id);
+  const [overrides] = ids.length ? await db.execute<Array<RowDataPacket & { admin_user_id: number; permission_key: string; allowed: number }>>(
+    `SELECT admin_user_id, permission_key, allowed FROM admin_user_permissions WHERE admin_user_id IN (${ids.map(() => "?").join(",")})`, ids,
+  ) : [[] as Array<RowDataPacket & { admin_user_id: number; permission_key: string; allowed: number }>];
+  const permissionMap = new Map<number, Record<string, boolean>>();
+  for (const grant of overrides) permissionMap.set(grant.admin_user_id, { ...(permissionMap.get(grant.admin_user_id) ?? {}), [grant.permission_key]: Boolean(grant.allowed) });
+  return NextResponse.json({ users: users.map((user) => ({ ...user, id: String(user.id), permissionOverrides: permissionMap.get(user.id) ?? {} })) }, { headers: { "Cache-Control": "no-store" } });
+}
+
+const editablePermissions: readonly AdminPermission[] = ["content:view", "mcq.create", "mcq.edit_own", "mcq.edit_any", "mcq.review", "mcq.publish", "mcq.archive", "category.manage", "paper.manage", "paper.publish", "paper.add_questions", "paper.quickcreate", "user.manage"];
+function validPermissionOverrides(value: unknown) {
+  if (value === undefined) return true;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const input = value as Record<string, unknown>;
+  return !Object.keys(input).some((key) => !editablePermissions.includes(key as AdminPermission)) && !Object.values(input).some((allowed) => typeof allowed !== "boolean");
+}
+async function savePermissionOverrides(userId: number, role: AdminRole, value: unknown) {
+  if (value === undefined) return;
+  if (!validPermissionOverrides(value)) throw new Error("Permission settings are invalid.");
+  const input = value as Record<string, unknown>;
+  if (Object.keys(input).some((key) => !editablePermissions.includes(key as AdminPermission)) || Object.values(input).some((allowed) => typeof allowed !== "boolean")) throw new Error("Choose valid permissions.");
+  await db!.execute("DELETE FROM admin_user_permissions WHERE admin_user_id = ?", [userId]);
+  for (const key of editablePermissions) {
+    const allowed = input[key];
+    const defaultAllowed = ROLE_PERMISSIONS[role].includes(key);
+    if (typeof allowed === "boolean" && allowed !== defaultAllowed) {
+      await db!.execute("INSERT INTO admin_user_permissions (admin_user_id, permission_key, allowed) VALUES (?, ?, ?)", [userId, key, allowed ? 1 : 0]);
+    }
+  }
 }
 
 export async function POST(request: Request) {
@@ -39,11 +67,14 @@ export async function POST(request: Request) {
   if (name.length < 2 || name.length > 140 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 190 || password.length < 12 || password.length > 200 || !safeRole(role)) {
     return NextResponse.json({ error: "Enter a name, valid email, role, and a password with at least 12 characters." }, { status: 400 });
   }
+  if (!validPermissionOverrides(body?.permissionOverrides)) return NextResponse.json({ error: "Choose valid permission overrides." }, { status: 400 });
   if (role === "super_admin" && principal.role !== "super_admin") return NextResponse.json({ error: "Only a Super Admin can create another Super Admin." }, { status: 403 });
   if (role === "admin" && principal.role !== "super_admin") return NextResponse.json({ error: "Only a Super Admin can assign the Admin role." }, { status: 403 });
   try {
     const [insert] = await db.execute("INSERT INTO admin_users (name, email, password_hash, role, status, must_change_password) VALUES (?, ?, ?, ?, 'active', 1)", [name, email, hashAdminPassword(password), role]);
-    await auditAdmin(principal, request, "create", "admin_user", Number((insert as { insertId: number }).insertId), null, { name, email, role, status: "active" });
+    const userId = Number((insert as { insertId: number }).insertId);
+    await savePermissionOverrides(userId, role, body?.permissionOverrides);
+    await auditAdmin(principal, request, "create", "admin_user", userId, null, { name, email, role, status: "active" });
   } catch (error) {
     if ((error as { code?: string }).code === "ER_DUP_ENTRY") return NextResponse.json({ error: "An account already uses that email address." }, { status: 409 });
     console.error("Admin user creation failed", error);
@@ -64,11 +95,13 @@ export async function PATCH(request: Request) {
   const email = userName(body?.email).toLowerCase();
   const password = typeof body?.password === "string" ? body.password : "";
   const role = body?.role;
+  const permissionOverrides = body?.permissionOverrides;
   const status = body?.status === "inactive" ? "inactive" : body?.status === "active" ? "active" : "";
   if (!Number.isInteger(id) || id < 1 || name.length < 2 || name.length > 140 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 190 || !safeRole(role) || !status || (password && (password.length < 12 || password.length > 200))) {
     return NextResponse.json({ error: "Enter valid account details. A new password must have at least 12 characters." }, { status: 400 });
   }
-  if (String(id) === principal.id && (status !== "active" || role !== principal.role || Boolean(password))) return NextResponse.json({ error: "You cannot disable or change the role of your own account." }, { status: 400 });
+  if (!validPermissionOverrides(permissionOverrides)) return NextResponse.json({ error: "Choose valid permission overrides." }, { status: 400 });
+  if (String(id) === principal.id && (status !== "active" || role !== principal.role || Boolean(password) || permissionOverrides !== undefined)) return NextResponse.json({ error: "You cannot change your own account or permissions." }, { status: 400 });
   if (role === "super_admin" && principal.role !== "super_admin") return NextResponse.json({ error: "Only a Super Admin can create another Super Admin." }, { status: 403 });
   if (role === "admin" && principal.role !== "super_admin") return NextResponse.json({ error: "Only a Super Admin can assign the Admin role." }, { status: 403 });
   try {
@@ -82,6 +115,7 @@ export async function PATCH(request: Request) {
     if (!exists[0]) return NextResponse.json({ error: "User account not found." }, { status: 404 });
     if ((exists[0].role === "admin" || exists[0].role === "super_admin") && principal.role !== "super_admin") return NextResponse.json({ error: "Only the bootstrap super admin can update Admin accounts." }, { status: 403 });
     await db.execute(sql, values);
+    await savePermissionOverrides(id, role, permissionOverrides);
     await auditAdmin(principal, request, "update", "admin_user", id, { role: exists[0].role }, { name, email, role, status, passwordReset: Boolean(password) });
   } catch (error) {
     if ((error as { code?: string }).code === "ER_DUP_ENTRY") return NextResponse.json({ error: "An account already uses that email address." }, { status: 409 });

@@ -13,6 +13,8 @@ Apply each numbered migration exactly once, in ascending order, to the `mcqs_web
 | 007 | `007_platform_improvements.sql` | Search, image metadata, learner actions, quiz review data, and rate limiting. |
 | 008 | `008_workflow_integrity.sql` | Question versions, immutable content snapshots, and links from learner answers to the question revision they saw. |
 | 009 | `009_admin_activity_logs.sql` | Staff login/logout and MCQ/paper activity snapshots for the Super Admin activity view. |
+| 010 | `010_link_source_matched_paper_questions.sql` | Links source-matched published questions to their matching papers. |
+| 011 | `011_question_language.sql` | Adds `questions.language` with an English default and language/status index. |
 
 Migration 004 restores the missing sequence number with the paper metadata change. Migration 005 is retained in its historical position because it cleans up old sample rows and temporarily restores the legacy single paper type; 007 upgrades it to the current values. For an existing database that has already applied 005 and 006, apply 004 once to add paper metadata, then 007. Do not rerun 001–003, 005, or 006.
 
@@ -20,8 +22,10 @@ For an existing database that has completed 001–007, run migration 008 once. I
 
 For an existing database that has completed 001–008, run migration 009 once. It creates the activity log table without changing existing content. The table intentionally has no foreign key to `admin_users`, so recorded actor snapshots survive staff account removal. The activity UI and API require this migration.
 
+For an existing database that has completed 001–010, run migration 011 once. It preserves existing question rows by assigning them `en`; set Urdu questions to `ur` from the editor. Do not rerun it after it has been applied.
+
 ```bash
-for migration in sql/migrations/00{1,2,3,4,5,6,7,8,9}_*.sql; do
+for migration in sql/migrations/[0-9][0-9][0-9]_*.sql; do
   mysql -u YOUR_DB_USER -p mcqs_website < "$migration"
 done
 ```
@@ -33,4 +37,6 @@ mysql -u YOUR_DB_USER -p mcqs_website < sql/migrations/004_paper_metadata.sql
 mysql -u YOUR_DB_USER -p mcqs_website < sql/migrations/007_platform_improvements.sql
 mysql -u YOUR_DB_USER -p mcqs_website < sql/migrations/008_workflow_integrity.sql
 mysql -u YOUR_DB_USER -p mcqs_website < sql/migrations/009_admin_activity_logs.sql
+mysql -u YOUR_DB_USER -p mcqs_website < sql/migrations/010_link_source_matched_paper_questions.sql
+mysql -u YOUR_DB_USER -p mcqs_website < sql/migrations/011_question_language.sql
 ```

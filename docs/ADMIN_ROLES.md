@@ -22,9 +22,21 @@ Apply `sql/migrations/006_admin_roles_workflow_security.sql` after migrations 00
 | `super_admin.manage` | ✓ | — | — | — | — |
 | `system.settings` | ✓ | — | — | — | — |
 
-`*` Admins may manage regular team accounts. Only Super Admins may create, modify, or assign the `admin` and `super_admin` roles. Role grants are centralized in `ROLE_PERMISSIONS` in `lib/admin-auth.ts`. Optional per-user allow/deny grants are stored in `admin_user_permissions`.
+`*` Admins may manage regular team accounts. Only Super Admins may create, modify, or assign the `admin` and `super_admin` roles. Role grants are centralized in the browser-safe `lib/admin-role-permissions.ts` module. Optional per-user allow/deny grants are stored in `admin_user_permissions`; the Team & roles permission matrix shows each role default, highlights overrides, and previews the effective values. `super_admin.manage` and `system.settings` cannot be overridden.
 
 Admin has all workspace permissions other than `super_admin.manage` and `system.settings`. Publisher manages papers and publishes approved MCQs; it has no edit permission on MCQs.
+
+## Admin workspace UI
+
+- The Overview cards vary by role: Data Entry sees owned drafts and rejected feedback; Reviewers get an oldest-first review queue; Publishers see approved MCQs and paper readiness. Cards open the matching filtered list.
+- Reviewers can approve or reject in a split view with a required comment. The next oldest submission loads after a decision.
+- The MCQ bank supports status, topic, author, source, and language filters; per-user saved views; compact or comfortable density; row selection and bulk actions; and a learner preview drawer. The column header stays visible while scrolling.
+- MCQ entry pairs the form with a learner preview and keeps the current paper, topic, difficulty, and source as clearable context chips. Edits to published MCQs show a before/after comparison.
+- Paper cards display question progress and readiness checks. The builder keeps question search and attach beside the ordered question list; the paper list can be dragged or reordered with buttons.
+- Sidebar groups follow Content, Papers, and Admin permissions and can be collapsed. The review count badge identifies itself as the number waiting for review.
+- Empty lists show a next step or a filter reset action.
+
+Saved MCQ bank views are stored in local storage and keyed by the signed-in staff user id.
 
 ## MCQ review lifecycle
 

@@ -8,6 +8,7 @@ export async function GET() {
   if (!principal || !requirePermission(principal, "content:view")) return NextResponse.json({ error: "Sign in with a content role." }, { status: 401 });
   if (!hasDatabase || !db) return NextResponse.json({ error: "Configure MySQL and apply migrations first." }, { status: 503 });
   const [statusCounts] = await db.execute<Array<RowDataPacket & { status: string; count: number }>>("SELECT status, COUNT(*) AS count FROM questions GROUP BY status");
+  const [ownedStatusCounts] = await db.execute<Array<RowDataPacket & { status: string; count: number }>>("SELECT status, COUNT(*) AS count FROM questions WHERE created_by = ? GROUP BY status", [principal.id]);
   const [categories] = await db.execute<Array<RowDataPacket & { subject_name: string; topic_name: string; question_count: number }>>(
     `SELECT s.name AS subject_name, t.name AS topic_name, COUNT(q.id) AS question_count
        FROM topics t JOIN subjects s ON s.id = t.subject_id
@@ -24,6 +25,7 @@ export async function GET() {
   );
   return NextResponse.json({
     statuses: Object.fromEntries(statusCounts.map((row) => [row.status, Number(row.count)])),
+    myStatuses: Object.fromEntries(ownedStatusCounts.map((row) => [row.status, Number(row.count)])),
     categories,
     emptyCategories: categories.filter((row) => Number(row.question_count) === 0),
     shortPapers: shortPapers.map((row) => ({ ...row, question_count: Number(row.question_count), expected_question_count: Number(row.expected_question_count) })),

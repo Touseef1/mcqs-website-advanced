@@ -3,27 +3,18 @@ import { cookies } from "next/headers";
 import { connection } from "next/server";
 import type { RowDataPacket } from "mysql2";
 import { db, hasDatabase } from "@/lib/db";
+import { ROLE_PERMISSIONS, type AdminPermission, type AdminRole } from "@/lib/admin-role-permissions";
+
+export { ROLE_PERMISSIONS } from "@/lib/admin-role-permissions";
+export type { AdminPermission, AdminRole } from "@/lib/admin-role-permissions";
 
 export const ADMIN_COOKIE = "mcqs_admin";
 export const ADMIN_SESSION_SECONDS = 60 * 60 * 8;
-export type AdminRole = "super_admin" | "admin" | "data_entry" | "reviewer" | "publisher";
-export type AdminPermission =
-  | "content:view" | "mcq.create" | "mcq.edit_own" | "mcq.edit_any" | "mcq.review" | "mcq.publish" | "mcq.archive"
-  | "category.manage" | "paper.manage" | "paper.publish" | "user.manage" | "super_admin.manage" | "system.settings"
-  | "paper.add_questions" | "paper.quickcreate"
-  // Legacy keys remain accepted temporarily so every existing route is covered during rollout.
-  | "questions:manage" | "categories:manage" | "papers:manage" | "content:publish" | "content:delete" | "users:manage";
+// Legacy permission aliases remain accepted temporarily so every existing route is covered during rollout.
 export type AdminPrincipal = { id: string; name: string; email: string; role: AdminRole; mustChangePassword?: boolean; permissionOverrides?: Record<string, boolean> };
 export type AdminCapabilities = { manageQuestions: boolean; manageCategories: boolean; managePapers: boolean; addQuestionsToPapers: boolean; quickCreatePapers: boolean; publishContent: boolean; deleteContent: boolean; manageUsers: boolean; createMcqs: boolean; reviewMcqs: boolean; editOwnMcqs: boolean; editAnyMcqs: boolean };
 
-/** The single source of truth for role grants. */
-export const ROLE_PERMISSIONS: Record<AdminRole, readonly AdminPermission[]> = {
-  super_admin: ["content:view", "mcq.create", "mcq.edit_own", "mcq.edit_any", "mcq.review", "mcq.publish", "mcq.archive", "category.manage", "paper.manage", "paper.publish", "paper.add_questions", "paper.quickcreate", "user.manage", "super_admin.manage", "system.settings"],
-  admin: ["content:view", "mcq.create", "mcq.edit_own", "mcq.edit_any", "mcq.review", "mcq.publish", "mcq.archive", "category.manage", "paper.manage", "paper.publish", "paper.add_questions", "paper.quickcreate", "user.manage"],
-  data_entry: ["content:view", "mcq.create", "mcq.edit_own", "paper.add_questions"],
-  reviewer: ["content:view", "mcq.edit_any", "mcq.review"],
-  publisher: ["content:view", "mcq.publish", "paper.manage", "paper.publish", "paper.add_questions", "paper.quickcreate"],
-};
+/** Role defaults are defined in a browser-safe module shared with the permission matrix. */
 const aliases: Partial<Record<AdminPermission, AdminPermission>> = {
   "questions:manage": "mcq.create", "categories:manage": "category.manage", "papers:manage": "paper.manage",
   "content:publish": "mcq.publish", "content:delete": "mcq.archive", "users:manage": "user.manage",

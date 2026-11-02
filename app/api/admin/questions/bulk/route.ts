@@ -94,6 +94,7 @@ export async function POST(request: Request) {
     const paperId = body?.paperId === null || body?.paperId === undefined || body?.paperId === "" ? null : Number(body.paperId);
     const sourceNote = typeof body?.sourceNote === "string" ? body.sourceNote.trim() : "";
     const difficulty = body?.difficulty === "easy" || body?.difficulty === "hard" ? body.difficulty : "medium";
+    const language = body?.language === "ur" ? "ur" : "en";
     const inputs = Array.isArray(body?.questions) ? body.questions : [];
     if (!Number.isSafeInteger(topicId) || topicId < 1 || sourceNote.length < 4 || sourceNote.length > 500 || inputs.length < 1 || inputs.length > 200 || (paperId !== null && (!Number.isSafeInteger(paperId) || paperId < 1))) return error("Choose a category, source reference, and 1–200 valid MCQs.");
     if (paperId !== null && !requirePermission(principal, "paper.add_questions")) return error("Your role cannot add questions to past papers.", 403);
@@ -123,9 +124,9 @@ export async function POST(request: Request) {
       }
       for (const item of parsed as InputQuestion[]) {
         const [insert] = await connection.execute(
-          `INSERT INTO questions (topic_id, question_text, explanation, source_note, correct_choice, difficulty, status, created_by, updated_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [topicId, item.prompt, item.explanation, sourceNote, item.correctChoice, difficulty, status, principal.id, principal.id],
+          `INSERT INTO questions (topic_id, question_text, explanation, source_note, correct_choice, difficulty, language, status, created_by, updated_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [topicId, item.prompt, item.explanation, sourceNote, item.correctChoice, difficulty, language, status, principal.id, principal.id],
         );
         const questionId = Number((insert as { insertId: number }).insertId);
         createdIds.push(questionId);

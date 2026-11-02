@@ -35,13 +35,14 @@ function parseQuestion(body: Record<string, unknown> | null) {
   const questionImageUrl = typeof body?.questionImageUrl === "string" && body.questionImageUrl ? body.questionImageUrl : null;
   const choiceImageUrls = Array.isArray(body?.choiceImageUrls) ? body.choiceImageUrls.map((url) => typeof url === "string" && url ? url : null) : [null, null, null, null];
   const difficulty = body?.difficulty === "easy" || body?.difficulty === "hard" ? body.difficulty : "medium";
+  const language = body?.language === "ur" ? "ur" : "en";
   const paperIds = body && Object.hasOwn(body, "paperIds")
     ? Array.isArray(body.paperIds) ? [...new Set(body.paperIds.map(Number))] : null
     : undefined;
   const normalizedChoices = choices.map((choice) => choice.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase());
   const validImage = (url: unknown) => url == null || (typeof url === "string" && /^\/uploads\/mcqs\/[a-f0-9-]{36}\.(?:png|jpg|webp)$/.test(url));
   if (!Number.isInteger(topicId) || topicId < 1 || prompt.length < 8 || prompt.length > 1500 || explanation.length > 3000 || sourceNote.length < 4 || sourceNote.length > 500 || choices.length !== 4 || choices.some((choice) => choice.length < 1 || choice.length > 800) || new Set(normalizedChoices).size !== 4 || !labels.includes(correctChoice as typeof labels[number]) || choiceImageUrls.length !== 4 || !validImage(questionImageUrl) || choiceImageUrls.some((url) => !validImage(url)) || paperIds === null || (paperIds && (paperIds.length > 50 || paperIds.some((id) => !Number.isSafeInteger(id) || id < 1)))) return null;
-  return { topicId, prompt, explanation, sourceNote, choices, choiceImageUrls, questionImageUrl, correctChoice, difficulty, paperIds };
+  return { topicId, prompt, explanation, sourceNote, choices, choiceImageUrls, questionImageUrl, correctChoice, difficulty, language, paperIds };
 }
 
 async function validatePaperIds(connection: import("mysql2/promise").PoolConnection, paperIds: number[], questionStatus: QuestionStatus) {
@@ -90,12 +91,18 @@ export async function GET(request: Request) {
   const ids = idsParam ? [...new Set(idsParam.split(",").map(Number).filter((id) => Number.isSafeInteger(id) && id > 0))].slice(0, 500) : [];
   const search = (params.get("search") ?? "").trim().slice(0, 160);
   const topicId = Number(params.get("topicId"));
+  const author = (params.get("author") ?? "").trim().slice(0, 100);
+  const source = (params.get("source") ?? "").trim().slice(0, 160);
+  const language = params.get("language");
   const status = params.get("status") ?? "all";
   const page = Math.max(1, Math.min(100000, Number(params.get("page")) || 1));
   const pageSize = Math.max(10, Math.min(100, Number(params.get("pageSize")) || (search || params.has("page") ? 25 : 500)));
   const conditions: string[] = [];
   const values: Array<string | number> = [];
-  if (!requirePermission(principal, "mcq.edit_any")) { conditions.push("q.created_by = ?"); values.push(Number(principal.id)); }
+  if (!requirePermission(principal, "mcq.edit_any")) {
+    if (requirePermission(principal, "mcq.publish")) conditions.push("q.status IN ('approved', 'published')");
+    else { conditions.push("q.created_by = ?"); values.push(Number(principal.id)); }
+  }
   if (idsParam) {
     if (!ids.length) return NextResponse.json({ questions: [], total: 0, page, pageSize });
     conditions.push(`q.id IN (${ids.map(() => "?").join(",")})`);
@@ -108,17 +115,20 @@ export async function GET(request: Request) {
   }
   if (Number.isSafeInteger(topicId) && topicId > 0) { conditions.push("t.id = ?"); values.push(topicId); }
   if (["draft", "in_review", "approved", "published", "rejected", "archived"].includes(status)) { conditions.push("q.status = ?"); values.push(status); }
+  if (author) { conditions.push("EXISTS (SELECT 1 FROM admin_users au WHERE au.id = q.created_by AND au.name LIKE ?)"); values.push(`%${author}%`); }
+  if (source) { conditions.push("q.source_note LIKE ?"); values.push(`%${source}%`); }
+  if (language === "en" || language === "ur") { conditions.push("q.language = ?"); values.push(language); }
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
   const from = "FROM questions q JOIN topics t ON t.id = q.topic_id JOIN subjects s ON s.id = t.subject_id";
   const [countRows] = await db.execute<Array<RowDataPacket & { total: number }>>(`SELECT COUNT(*) AS total ${from} ${where}`, values);
   const total = Number(countRows[0]?.total ?? 0);
   const offset = (page - 1) * pageSize;
-  const [questions] = await db.execute<Array<RowDataPacket & { id: number; topic_id: number; topic_name: string; subject_name: string; prompt: string; explanation: string; source_note: string; correct_choice: string; difficulty: string; status: string; review_note: string | null; created_by: number | null; updated_at: string; question_image_url: string | null; version: number }>>(
+  const [questions] = await db.execute<Array<RowDataPacket & { id: number; topic_id: number; topic_name: string; subject_name: string; prompt: string; explanation: string; source_note: string; correct_choice: string; difficulty: string; language: string; author_name: string | null; status: string; review_note: string | null; created_by: number | null; updated_at: string; question_image_url: string | null; version: number }>>(
     `SELECT q.id, q.topic_id, t.name AS topic_name, s.name AS subject_name,
-            q.question_text AS prompt, q.explanation, q.source_note, q.correct_choice, q.difficulty, q.status, q.review_note, q.created_by, q.updated_at, q.question_image_url
+            q.question_text AS prompt, q.explanation, q.source_note, q.correct_choice, q.difficulty, q.language, au.name AS author_name, q.status, q.review_note, q.created_by, q.updated_at, q.question_image_url
             , q.version
-     ${from} ${where}
-     ORDER BY q.updated_at DESC, q.id DESC LIMIT ? OFFSET ?`,
+     ${from} LEFT JOIN admin_users au ON au.id = q.created_by ${where}
+     ORDER BY ${status === "in_review" ? "q.updated_at ASC, q.id ASC" : "q.updated_at DESC, q.id DESC"} LIMIT ? OFFSET ?`,
     [...values, pageSize, offset],
   );
   const questionIds = questions.map((question) => question.id);
@@ -146,7 +156,7 @@ export async function GET(request: Request) {
   return NextResponse.json({ questions: orderedQuestions.map((question) => ({
     id: question.id, topicId: question.topic_id, topicName: question.topic_name, subjectName: question.subject_name,
     prompt: question.prompt, explanation: question.explanation, sourceNote: question.source_note, correctChoice: question.correct_choice, questionImageUrl: question.question_image_url,
-    difficulty: question.difficulty, status: question.status, version: question.version, reviewNote: question.review_note, createdBy: question.created_by, paperIds: paperIdMap.get(question.id) ?? [],
+    difficulty: question.difficulty, language: question.language, authorName: question.author_name ?? "Unknown staff", status: question.status, version: question.version, reviewNote: question.review_note, createdBy: question.created_by, paperIds: paperIdMap.get(question.id) ?? [],
     choices: choiceMap.get(question.id) ?? [],
   })), total, page, pageSize }, { headers: { "Cache-Control": "no-store" } });
 }
@@ -172,11 +182,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Choose active past papers. Published papers can contain only published MCQs." }, { status: 400 });
     }
     const [insert] = await connection.execute(
-      `INSERT INTO questions (topic_id, question_text, explanation, source_note, question_image_url, correct_choice, difficulty, status, created_by, updated_by)
-       SELECT t.id, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM topics t JOIN subjects s ON s.id = t.subject_id
+      `INSERT INTO questions (topic_id, question_text, explanation, source_note, question_image_url, correct_choice, difficulty, language, status, created_by, updated_by)
+       SELECT t.id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM topics t JOIN subjects s ON s.id = t.subject_id
        WHERE t.id = ? AND t.status != 'archived' AND s.status != 'archived'
          AND (? != 'published' OR (t.status = 'published' AND s.status = 'published'))`,
-      [parsed.prompt, parsed.explanation, parsed.sourceNote, parsed.questionImageUrl, parsed.correctChoice, parsed.difficulty, status, principal.id, principal.id, parsed.topicId, status],
+      [parsed.prompt, parsed.explanation, parsed.sourceNote, parsed.questionImageUrl, parsed.correctChoice, parsed.difficulty, parsed.language, status, principal.id, principal.id, parsed.topicId, status],
     );
     questionId = (insert as { insertId: number }).insertId;
     if (!questionId) {
@@ -313,8 +323,8 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Choose active papers. Published papers can contain only published MCQs." }, { status: 400 });
     }
     await connection.execute(
-      "UPDATE questions SET topic_id = ?, question_text = ?, explanation = ?, source_note = ?, question_image_url = ?, correct_choice = ?, difficulty = ?, status = ?, review_note = IF(? = 'draft', NULL, review_note), updated_by = ?, version = version + 1 WHERE id = ? AND version = ?",
-      [parsed.topicId, parsed.prompt, parsed.explanation, parsed.sourceNote, parsed.questionImageUrl, parsed.correctChoice, parsed.difficulty, newStatus, newStatus, principal.id, id, expectedVersion],
+      "UPDATE questions SET topic_id = ?, question_text = ?, explanation = ?, source_note = ?, question_image_url = ?, correct_choice = ?, difficulty = ?, language = ?, status = ?, review_note = IF(? = 'draft', NULL, review_note), updated_by = ?, version = version + 1 WHERE id = ? AND version = ?",
+      [parsed.topicId, parsed.prompt, parsed.explanation, parsed.sourceNote, parsed.questionImageUrl, parsed.correctChoice, parsed.difficulty, parsed.language, newStatus, newStatus, principal.id, id, expectedVersion],
     );
     await connection.execute("DELETE FROM choices WHERE question_id = ?", [id]);
     for (let index = 0; index < labels.length; index++) await connection.execute("INSERT INTO choices (question_id, label, choice_text, image_url) VALUES (?, ?, ?, ?)", [id, labels[index], parsed.choices[index], parsed.choiceImageUrls[index]]);
