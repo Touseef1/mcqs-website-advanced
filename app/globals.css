@@ -227,6 +227,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .revealed-answer strong { font-size: 12px; }
 .revealed-answer p { margin: 5px 0 0; color: #526b58; font-size: 12px; }
 .question-explanation { margin: 9px 0 0; color: #65756b; font-size: 11px; line-height: 1.55; }
+.question-explanation summary { width: fit-content; color: #376b47; font-weight: 700; cursor: pointer; }
+.question-explanation summary:hover { color: #244d35; }
+.question-explanation p { margin: 6px 0 0; color: inherit; font-size: inherit; line-height: inherit; }
 .answer-loading { margin: 10px 0 0; color: #738177; font-size: 11px; }
 .quiz-progress-row { display: flex; justify-content: space-between; align-items: center; color: #76867c; font-size: 10px; }
 .timer { color: #6d7b72; font-weight: 750; }
@@ -250,6 +253,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .choice-option input { position: absolute; opacity: 0; pointer-events: none; }
 .choice-label { width: 21px; height: 21px; flex: 0 0 auto; display: grid; place-items: center; border: 1px solid #e0e6df; border-radius: 50%; color: #718279; font-size: 8px; font-weight: 800; }
 .choice-option.selected .choice-label { border-color: #477958; background: #477958; color: #fff; }
+.choice-option.is-revealed-wrong .choice-label { border-color: #b83e31; background: #c74638; color: #fff; }
 .quiz-submit-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 17px; }
 .quiz-submit-row > span { color: #86938a; font-size: 9px; }
 .quiz-aside { padding: 20px; border: 1px solid #dfe8dd; border-radius: 10px; background: #eef3e9; position: sticky; top: 20px; }
@@ -1707,6 +1711,9 @@ body:has(.admin-page) { background: #f4f7f5; color: #1c332b; }
 :root[data-theme="dark"] .learner-pagination .is-active .learner-pagination-link { border-color: #6c9e74; background: #477958; color: #fff; }
 :root[data-theme="dark"] .learner-pagination-break .learner-pagination-link { border-color: transparent; background: transparent; }
 :root[data-theme="dark"] .question-explanation { color: #a8b9b0; }
+:root[data-theme="dark"] .question-explanation summary { color: #a9d7b1; }
+:root[data-theme="dark"] .question-explanation summary:hover { color: #d3f0d7; }
+:root[data-theme="dark"] .choice-option.is-revealed-wrong .choice-label { border-color: #d2675a; background: #b9493d; color: #fff; }
 :root[data-theme="dark"] .revealed-answer { background: #1c3829; border-color: #42694d; color: #bde4c9; }
 :root[data-theme="dark"] .revealed-answer p { color: #a8c5af; }
 :root[data-theme="dark"] .choice-option.is-revealed-correct { background: #1c3829; border-color: #5b8d63; }

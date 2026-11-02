@@ -208,7 +208,10 @@ export function QuizRunner({ questions, title, quizSlug, quizPath, canBookmark =
                 {canBookmark && <button className="question-save-button" onClick={() => void toggleBookmark(question.id)} disabled={savingId === question.id}>{savedIds.includes(question.id) ? "★ Saved question" : "☆ Save question"}</button>}
                 <p className="review-answer">{answer?.selectedChoice ? `Your answer: ${answer.selectedChoice} · ` : "Not answered · "}Correct answer: {answer?.correctChoice}</p>
                 <ul className="review-choice-list">{question.choices.map((choice) => <li className={choice.label === answer?.correctChoice ? "is-correct" : choice.label === answer?.selectedChoice ? "is-selected" : ""} key={choice.label}><b>{choice.label}.</b>{choice.text && <LocalizedText>{choice.text}</LocalizedText>}{choice.imageUrl && <MCQImage src={choice.imageUrl} alt={`Option ${choice.label} image`} size="option" />}</li>)}</ul>
-                {(answer?.explanation || question.explanation) && <p className="question-explanation"><LocalizedText>{answer?.explanation || question.explanation}</LocalizedText></p>}
+                {(answer?.explanation || question.explanation) && <details className="question-explanation">
+                  <summary>Show explanation</summary>
+                  <p><LocalizedText>{answer?.explanation || question.explanation}</LocalizedText></p>
+                </details>}
               </article>
             );
           })}
@@ -250,16 +253,20 @@ export function QuizRunner({ questions, title, quizSlug, quizPath, canBookmark =
                     const inputId = `question-${question.id}-${choice.label}`;
                     const selected = answers[question.id] === choice.label;
                     const isCorrect = revealed?.correctChoice === choice.label;
-                    const classNames = ["choice-option", selected && "selected", revealed && isCorrect && "is-revealed-correct", revealed && selected && !isCorrect && "is-revealed-wrong"].filter(Boolean).join(" ");
+                    const isWrong = Boolean(revealed && selected && !isCorrect);
+                    const classNames = ["choice-option", selected && "selected", revealed && isCorrect && "is-revealed-correct", isWrong && "is-revealed-wrong"].filter(Boolean).join(" ");
                     return <div className={classNames} key={choice.label} onClick={(event) => { if (!(event.target instanceof HTMLInputElement) && !(event.target instanceof HTMLButtonElement)) chooseAnswer(question.id, choice.label); }}>
                       {mode === "quiz" && <input id={inputId} type="radio" name={`question-${question.id}`} aria-label={`Option ${choice.label}`} value={choice.label} checked={selected} disabled={loading || pending || locked} onChange={() => chooseAnswer(question.id, choice.label)} />}
-                      <span className="choice-label">{choice.label}</span><div className="choice-content">{choice.text && <span className="choice-text"><LocalizedText>{choice.text}</LocalizedText></span>}{choice.imageUrl && <MCQImage src={choice.imageUrl} alt={`Option ${choice.label} image`} size="option" onActivate={mode === "quiz" ? () => chooseAnswer(question.id, choice.label) : undefined} />}</div>
+                      <span className={`choice-label${isWrong ? " is-wrong" : ""}`}>{choice.label}</span><div className="choice-content">{choice.text && <span className="choice-text"><LocalizedText>{choice.text}</LocalizedText></span>}{choice.imageUrl && <MCQImage src={choice.imageUrl} alt={`Option ${choice.label} image`} size="option" onActivate={mode === "quiz" ? () => chooseAnswer(question.id, choice.label) : undefined} />}</div>
                     </div>;
                   })}
                 </div>
                 {mode === "read" && (revealed ? <div className="revealed-answer" role="status"><strong>Correct answer: {revealed.correctChoice}</strong></div> : <p className="answer-loading" role="status">{error ? "Answer could not be loaded. Refresh to try again." : "Loading answer…"}</p>)}
                 {mode === "quiz" && revealed && <span className="sr-only" role="status">Answer checked.</span>}
-                {question.explanation && <p className="question-explanation"><LocalizedText>{question.explanation}</LocalizedText></p>}
+                {question.explanation && <details className="question-explanation">
+                  <summary>Show explanation</summary>
+                  <p><LocalizedText>{question.explanation}</LocalizedText></p>
+                </details>}
               </article>
             );
           })}
