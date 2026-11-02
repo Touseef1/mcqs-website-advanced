@@ -340,6 +340,6 @@ The quiz already showed correct answers and explanations after submission; this 
 
 Rate limits use MySQL fixed-window buckets in `api_rate_limit_buckets` for quiz submissions, learner sign-in, password reset, and verification resend. When MySQL is unavailable, a process-local in-memory fallback is used for local development; production deployments should have MySQL configured so limits are shared by all app processes.
 
-### Homepage and learner sign-in refresh
+### Learner sign-in refresh
 
-The homepage uses a compact search hero, subject cards, paper rows, and topic links populated from the database. Learner access defaults to Sign in, with a split brand/form layout, explicit Create account switch, password visibility control, recovery and verification links, and guest browsing. Scoped styles support mobile and dark mode. Authentication endpoints are unchanged.
+The homepage and navigation CTA retain their previous design. Learner access defaults to Sign in, with a split brand/form layout, explicit Create account switch, password visibility control, recovery and verification links, and guest browsing. Scoped styles support mobile and dark mode. Authentication endpoints are unchanged.
