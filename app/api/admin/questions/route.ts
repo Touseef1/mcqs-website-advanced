@@ -6,6 +6,7 @@ import { canActorEditQuestion, canActorTransition, getActorQuestionTransition, g
 import { db, hasDatabase } from "@/lib/db";
 import { linkPublishedQuestionsBySource } from "@/lib/paper-links";
 import { auditAdmin } from "@/lib/admin-security";
+import { detectQuestionLanguage } from "@/lib/language";
 
 import { csrfFailure } from "@/lib/admin-security";
 const labels = ["A", "B", "C", "D"] as const;
@@ -35,7 +36,7 @@ function parseQuestion(body: Record<string, unknown> | null) {
   const questionImageUrl = typeof body?.questionImageUrl === "string" && body.questionImageUrl ? body.questionImageUrl : null;
   const choiceImageUrls = Array.isArray(body?.choiceImageUrls) ? body.choiceImageUrls.map((url) => typeof url === "string" && url ? url : null) : [null, null, null, null];
   const difficulty = body?.difficulty === "easy" || body?.difficulty === "hard" ? body.difficulty : "medium";
-  const language = body?.language === "ur" ? "ur" : "en";
+  const language = detectQuestionLanguage([prompt, ...choices, explanation]);
   const paperIds = body && Object.hasOwn(body, "paperIds")
     ? Array.isArray(body.paperIds) ? [...new Set(body.paperIds.map(Number))] : null
     : undefined;
