@@ -3,9 +3,9 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
-import { MCQImage } from "@/components/MCQImage";
-import { LocalizedText } from "@/components/LocalizedText";
-import { getQuestions, getTopic } from "@/lib/data";
+import { QuizRunner } from "@/components/QuizRunner";
+import { getQuestions, getTopic, toPublicQuestion } from "@/lib/data";
+import { getLearnerPrincipal } from "@/lib/learner-auth";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -22,22 +22,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 async function TopicContent({ params }: Props) {
   const { slug } = await params;
-  const [topic, questions] = await Promise.all([getTopic(slug), getQuestions(slug)]);
+  const [topic, questions, learner] = await Promise.all([getTopic(slug), getQuestions(slug), getLearnerPrincipal()]);
   if (!topic) notFound();
   return (
     <main className="content-page">
       <Breadcrumbs items={[{ label: "Subjects", href: "/subjects" }, { label: topic.subjectName, href: `/subjects/${topic.subjectSlug}` }, { label: topic.name }]} />
       <div className="topic-hero"><div><span className="eyebrow">{topic.subjectName.toUpperCase()} · SOURCE-VERIFIED MCQS</span><h1>{topic.name} MCQs</h1><p>{topic.description} Answer the questions, then review the source and explanation for each one.</p><div className="topic-hero-meta"><span>{questions.length} MCQs</span><span>Free · No account required</span></div></div><Link className="button button-primary" href={`/quiz/${topic.slug}`}>Start topic quiz <span aria-hidden>→</span></Link></div>
-      <div className="question-preview-list">
-        <div className="preview-heading"><div><span className="eyebrow">QUESTION PREVIEW</span><h2>Review this topic</h2></div><span>Answers are shown after the quiz</span></div>
-        {questions.slice(0, 5).map((question, index) => (
-          <article className="preview-question" key={question.id}>
-            <span className="preview-number">{String(index + 1).padStart(2, "0")}</span>
-            <div><h3><LocalizedText>{question.prompt}</LocalizedText></h3>{question.questionImageUrl && <MCQImage src={question.questionImageUrl} alt="Question image" size="compact" />}<div className="preview-options">{question.choices.map((choice) => <span className="preview-option" key={choice.label}><b>{choice.label}</b> <LocalizedText>{choice.text}</LocalizedText>{choice.imageUrl && <MCQImage src={choice.imageUrl} alt={`Option ${choice.label} image`} size="compact" />}</span>)}</div></div>
-          </article>
-        ))}
-        {!questions.length && <p className="empty-inline">New questions for this topic will be added soon.</p>}
-      </div>
+      <section className="topic-study-section" id="topic-study"><div className="preview-heading"><div><span className="eyebrow">TOPIC QUESTIONS</span><h2>Choose how to study</h2></div><span>10 questions per page</span></div><QuizRunner questions={questions.map(toPublicQuestion)} title={topic.name} quizSlug={topic.slug} canBookmark={Boolean(learner)} /></section>
     </main>
   );
 }

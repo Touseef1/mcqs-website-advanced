@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { PublicQuestion } from "@/lib/data";
 import { getErrorMessage, parseApiResponse } from "@/lib/error-message";
@@ -20,28 +20,56 @@ type QuizResult = {
     explanation: string;
   }>;
 };
+type RevealedAnswer = { questionId: number; correctChoice: string; explanation: string };
+type StudyMode = "read" | "quiz";
+const PAGE_SIZE = 10;
 
-export function QuizRunner({ questions, title, quizSlug, quizPath }: { questions: PublicQuestion[]; title: string; quizSlug: string; quizPath?: string }) {
+function LearnerPagination({ currentPage, pageCount, total, onChange }: { currentPage: number; pageCount: number; total: number; onChange: (page: number) => void }) {
+  if (pageCount <= 1) return null;
+  const first = (currentPage - 1) * PAGE_SIZE + 1;
+  const last = Math.min(currentPage * PAGE_SIZE, total);
+  return <nav className="learner-pagination" aria-label="Question pages">
+    <button className="button button-light" type="button" onClick={() => onChange(currentPage - 1)} disabled={currentPage === 1}>Previous</button>
+    <span>Questions {first}–{last} of {total} · Page {currentPage} of {pageCount}</span>
+    <button className="button button-light" type="button" onClick={() => onChange(currentPage + 1)} disabled={currentPage === pageCount}>Next</button>
+  </nav>;
+}
+
+export function QuizRunner({ questions, title, quizSlug, quizPath, canBookmark = false }: { questions: PublicQuestion[]; title: string; quizSlug: string; quizPath?: string; canBookmark?: boolean }) {
+  const [mode, setMode] = useState<StudyMode>("quiz");
+  const [currentPage, setCurrentPage] = useState(1);
   const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [revealedAnswers, setRevealedAnswers] = useState<Record<number, RevealedAnswer>>({});
+  const [pendingAnswerIds, setPendingAnswerIds] = useState<number[]>([]);
   const [result, setResult] = useState<QuizResult | null>(null);
   const [loading, setLoading] = useState(false);
-  const [seconds, setSeconds] = useState(questions.length * 60);
   const [error, setError] = useState("");
   const [savedIds, setSavedIds] = useState<number[]>([]);
   const [accountRequired, setAccountRequired] = useState(false);
   const [savingId, setSavingId] = useState<number | null>(null);
+  const startedAt = useRef<number | null>(null);
+  const pageCount = Math.max(1, Math.ceil(questions.length / PAGE_SIZE));
+  const visibleQuestions = questions.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
   const answered = Object.keys(answers).length;
   const progress = questions.length ? Math.round((answered / questions.length) * 100) : 0;
-  const clock = useMemo(() => `${Math.floor(seconds / 60).toString().padStart(2, "0")}:${(seconds % 60).toString().padStart(2, "0")}`, [seconds]);
+
+  useEffect(() => { startedAt.current ??= Date.now(); }, []);
 
   useEffect(() => {
-    if (result || questions.length === 0) return;
-    const timer = window.setInterval(() => setSeconds((value) => Math.max(0, value - 1)), 1000);
-    return () => window.clearInterval(timer);
-  }, [result, questions.length]);
+    if (mode !== "read" || questions.length === 0) return;
+    const controller = new AbortController();
+    const ids = questions.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+      .filter((question) => !revealedAnswers[question.id]).map((question) => question.id);
+    if (!ids.length) return;
+    void fetch(`/api/quiz/reveal?ids=${ids.join(",")}`, { signal: controller.signal, cache: "no-store" })
+      .then((response) => parseApiResponse<{ answers: RevealedAnswer[] }>(response, "Could not load the answers."))
+      .then((data) => setRevealedAnswers((current) => ({ ...current, ...Object.fromEntries(data.answers.map((answer) => [answer.questionId, answer])) })))
+      .catch((cause) => { if (!controller.signal.aborted) { const message = getErrorMessage(cause, "Could not load the answers."); setError(message); notify.error(message); } });
+    return () => controller.abort();
+  }, [mode, currentPage, questions, revealedAnswers]);
 
   useEffect(() => {
-    if (!questions.length) return;
+    if (!canBookmark || !questions.length) return;
     const controller = new AbortController();
     void fetch(`/api/learner/bookmarks?ids=${questions.map((question) => question.id).join(",")}`, { signal: controller.signal })
       .then(async (response) => {
@@ -50,7 +78,7 @@ export function QuizRunner({ questions, title, quizSlug, quizPath }: { questions
         setSavedIds(data.bookmarks.map((item) => item.questionId));
       }).catch((cause) => { if (!controller.signal.aborted) notify.error(getErrorMessage(cause, "Could not load saved questions.")); });
     return () => controller.abort();
-  }, [questions]);
+  }, [canBookmark, questions]);
 
   async function toggleBookmark(questionId: number) {
     setSavingId(questionId);
@@ -72,14 +100,30 @@ export function QuizRunner({ questions, title, quizSlug, quizPath }: { questions
     }
   }
 
-  useEffect(() => {
-    if (seconds === 0 && !result && !loading) void submitQuiz();
-    // submitQuiz is intentionally invoked once when the timer reaches zero.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seconds, result, loading]);
+  async function revealAnswer(questionId: number) {
+    if (revealedAnswers[questionId] || pendingAnswerIds.includes(questionId)) return;
+    setPendingAnswerIds((current) => [...current, questionId]);
+    try {
+      const response = await fetch(`/api/quiz/reveal?ids=${questionId}`, { cache: "no-store" });
+      const data = await parseApiResponse<{ answers: RevealedAnswer[] }>(response, "Could not check this answer.");
+      const answer = data.answers.find((item) => item.questionId === questionId);
+      if (!answer?.correctChoice) throw new Error("This question is no longer available.");
+      setRevealedAnswers((current) => ({ ...current, [questionId]: answer }));
+    } catch (cause) {
+      const message = getErrorMessage(cause, "Could not check this answer."); setError(message); notify.error(message);
+    } finally {
+      setPendingAnswerIds((current) => current.filter((id) => id !== questionId));
+    }
+  }
+
+  function chooseAnswer(questionId: number, choice: string) {
+    if (mode !== "quiz" || result) return;
+    setAnswers((current) => ({ ...current, [questionId]: choice }));
+    void revealAnswer(questionId);
+  }
 
   async function submitQuiz() {
-    if (loading || result) return;
+    if (loading || result || mode !== "quiz") return;
     setLoading(true);
     setError("");
     try {
@@ -90,10 +134,11 @@ export function QuizRunner({ questions, title, quizSlug, quizPath }: { questions
           answers: questions.map((question) => ({ questionId: question.id, choice: answers[question.id] ?? "" })),
           quizTitle: title,
           quizPath: quizPath ?? `/quiz/${quizSlug}`,
-          elapsedSeconds: Math.max(0, questions.length * 60 - seconds),
+          elapsedSeconds: Math.max(0, Math.floor((Date.now() - (startedAt.current ?? Date.now())) / 1000)),
         }),
       });
       const data = await parseApiResponse<QuizResult>(response, "Could not submit the quiz.");
+      setCurrentPage(1);
       setResult(data);
       if (data.attemptHistorySaved === false) notify.warning("Your quiz was scored, but it could not be saved to your account history.");
     } catch (submitError) {
@@ -101,6 +146,11 @@ export function QuizRunner({ questions, title, quizSlug, quizPath }: { questions
     } finally {
       setLoading(false);
     }
+  }
+
+  function changePage(page: number) {
+    setCurrentPage(Math.max(1, Math.min(pageCount, page)));
+    setError("");
   }
 
   if (!questions.length) {
@@ -113,26 +163,27 @@ export function QuizRunner({ questions, title, quizSlug, quizPath }: { questions
         <div className="result-summary">
           <span className="eyebrow">TEST COMPLETE</span>
           <h2>{result.score} <span>/ {questions.length}</span></h2>
-          <p>You answered {result.total} of {questions.length} questions. Review the explanations below to strengthen your understanding.</p>
-          <button className="button button-primary" onClick={() => { setAnswers({}); setResult(null); setSeconds(questions.length * 60); }}>Try again</button>
+          <p>You answered {result.total} questions. Review the answers and explanations below.</p>
+          <button className="button button-primary" onClick={() => { setAnswers({}); setResult(null); setCurrentPage(1); setMode("quiz"); setRevealedAnswers({}); startedAt.current = Date.now(); }}>Try again</button>
         </div>
         <div className="review-list">
-          <h3>Answer review</h3>
-          {questions.map((question, index) => {
+          <h3>Answer review · questions {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, questions.length)}</h3>
+          {visibleQuestions.map((question, index) => {
             const answer = result.results.find((item) => item.questionId === question.id);
             return (
               <article className="review-item" key={question.id}>
-                <div className="review-heading"><span>QUESTION {String(index + 1).padStart(2, "0")}</span><b className={answer?.correct ? "status-correct" : "status-wrong"}>{answer?.correct ? "Correct" : answer ? "Review" : "Not answered"}</b></div>
+                <div className="review-heading"><span>QUESTION {String((currentPage - 1) * PAGE_SIZE + index + 1).padStart(2, "0")}</span><b className={answer?.correct ? "status-correct" : "status-wrong"}>{answer?.correct ? "Correct" : answer ? "Review" : "Not answered"}</b></div>
                 <h4><LocalizedText>{question.prompt}</LocalizedText></h4>
                 {question.questionImageUrl && <MCQImage src={question.questionImageUrl} alt="Question image" size="question" />}
                 <p className="question-source">Source: {question.sourceNote}</p>
-                <button className="question-save-button" onClick={() => void toggleBookmark(question.id)} disabled={savingId === question.id}>{savedIds.includes(question.id) ? "★ Saved question" : "☆ Save question"}</button>
+                {canBookmark && <button className="question-save-button" onClick={() => void toggleBookmark(question.id)} disabled={savingId === question.id}>{savedIds.includes(question.id) ? "★ Saved question" : "☆ Save question"}</button>}
                 <p className="review-answer">{answer?.selectedChoice ? `Your answer: ${answer.selectedChoice} · ` : "Not answered · "}Correct answer: {answer?.correctChoice}</p>
                 <ul className="review-choice-list">{question.choices.map((choice) => <li className={choice.label === answer?.correctChoice ? "is-correct" : choice.label === answer?.selectedChoice ? "is-selected" : ""} key={choice.label}><b>{choice.label}.</b>{choice.text && <LocalizedText>{choice.text}</LocalizedText>}{choice.imageUrl && <MCQImage src={choice.imageUrl} alt={`Option ${choice.label} image`} size="option" />}</li>)}</ul>
-                <p><LocalizedText>{answer?.explanation ?? "You skipped this question. Review the correct answer and explanation."}</LocalizedText></p>
+                <p><LocalizedText>{answer?.explanation ?? "Review the correct answer and explanation."}</LocalizedText></p>
               </article>
             );
           })}
+          <LearnerPagination currentPage={currentPage} pageCount={pageCount} total={questions.length} onChange={changePage} />
         </div>
       </section>
     );
@@ -141,40 +192,59 @@ export function QuizRunner({ questions, title, quizSlug, quizPath }: { questions
   return (
     <div className="quiz-layout">
       <div className="quiz-main">
-        <div className="quiz-progress-row"><span>{answered} of {questions.length} answered</span><span className="timer"><span aria-hidden>◷</span> {clock}</span></div>
-        <div className="progress-track"><span style={{ width: `${progress}%` }} /></div>
-        <div className="quiz-question-list">
-          {questions.map((question, index) => (
-            <article className="quiz-question" key={question.id}>
-              <div className="question-number">QUESTION {String(index + 1).padStart(2, "0")} <span>{index + 1}/{questions.length}</span></div>
-              <h2><LocalizedText>{question.prompt}</LocalizedText></h2>
-              {question.questionImageUrl && <MCQImage src={question.questionImageUrl} alt="Question image" size="question" />}
-              <p className="question-source">Source: {question.sourceNote}</p>
-              <button className="question-save-button" onClick={() => void toggleBookmark(question.id)} disabled={savingId === question.id}>{savingId === question.id ? "Saving…" : savedIds.includes(question.id) ? "★ Saved question" : "☆ Save question"}</button>
-              <div className="choice-list">
-                {question.choices.map((choice) => {
-                  const inputId = `question-${question.id}-${choice.label}`;
-                  const selectChoice = () => setAnswers((current) => ({ ...current, [question.id]: choice.label }));
-                  return <div className={answers[question.id] === choice.label ? "choice-option selected" : "choice-option"} key={choice.label} onClick={selectChoice}>
-                    <input id={inputId} type="radio" name={`question-${question.id}`} value={choice.label} checked={answers[question.id] === choice.label} onChange={selectChoice} />
-                    <label className="choice-label" htmlFor={inputId}>{choice.label}</label><div className="choice-content">{choice.text && <label className="choice-text" htmlFor={inputId}><LocalizedText>{choice.text}</LocalizedText></label>}{choice.imageUrl && <MCQImage src={choice.imageUrl} alt={`Option ${choice.label} image`} size="option" onActivate={selectChoice} />}</div>
-                  </div>;
-                })}
-              </div>
-            </article>
-          ))}
+        <div className="study-mode-toolbar" role="group" aria-label="Choose study mode">
+          <div><strong>Choose how to study</strong><span>{mode === "read" ? "Answers are visible as you read." : "Choose an option to reveal its answer, or submit the full set for your score."}</span></div>
+          <div className="study-mode-buttons">
+            <button type="button" aria-pressed={mode === "read"} className={mode === "read" ? "is-active" : ""} onClick={() => { setMode("read"); setError(""); }}>Read mode</button>
+            <button type="button" aria-pressed={mode === "quiz"} className={mode === "quiz" ? "is-active" : ""} onClick={() => { setMode("quiz"); setError(""); startedAt.current = Date.now(); }}>Quiz mode</button>
+          </div>
         </div>
+        {mode === "quiz" && <>
+          <div className="quiz-progress-row"><span>{answered} of {questions.length} answered</span><span>{progress}% complete</span></div>
+          <div className="progress-track"><span style={{ width: `${progress}%` }} /></div>
+        </>}
+        <div className="quiz-question-list">
+          {visibleQuestions.map((question, index) => {
+            const revealed = revealedAnswers[question.id];
+            const pending = pendingAnswerIds.includes(question.id);
+            const questionNumber = (currentPage - 1) * PAGE_SIZE + index + 1;
+            return (
+              <article className="quiz-question" key={question.id}>
+                <div className="question-number">QUESTION {String(questionNumber).padStart(2, "0")} <span>{questionNumber}/{questions.length}</span></div>
+                <h2><LocalizedText>{question.prompt}</LocalizedText></h2>
+                {question.questionImageUrl && <MCQImage src={question.questionImageUrl} alt="Question image" size="question" />}
+                <p className="question-source">Source: {question.sourceNote}</p>
+                {canBookmark && <button className="question-save-button" onClick={() => void toggleBookmark(question.id)} disabled={savingId === question.id}>{savingId === question.id ? "Saving…" : savedIds.includes(question.id) ? "★ Saved question" : "☆ Save question"}</button>}
+                <div className={mode === "read" ? "choice-list choice-list-readonly" : "choice-list"}>
+                  {question.choices.map((choice) => {
+                    const inputId = `question-${question.id}-${choice.label}`;
+                    const selected = answers[question.id] === choice.label;
+                    const isCorrect = revealed?.correctChoice === choice.label;
+                    const classNames = ["choice-option", selected && "selected", revealed && isCorrect && "is-revealed-correct", revealed && selected && !isCorrect && "is-revealed-wrong"].filter(Boolean).join(" ");
+                    return <div className={classNames} key={choice.label} onClick={(event) => { if (!(event.target instanceof HTMLInputElement) && !(event.target instanceof HTMLButtonElement)) chooseAnswer(question.id, choice.label); }}>
+                      {mode === "quiz" && <input id={inputId} type="radio" name={`question-${question.id}`} aria-label={`Option ${choice.label}`} value={choice.label} checked={selected} disabled={loading || pending} onChange={() => chooseAnswer(question.id, choice.label)} />}
+                      <span className="choice-label">{choice.label}</span><div className="choice-content">{choice.text && <span className="choice-text"><LocalizedText>{choice.text}</LocalizedText></span>}{choice.imageUrl && <MCQImage src={choice.imageUrl} alt={`Option ${choice.label} image`} size="option" onActivate={mode === "quiz" ? () => chooseAnswer(question.id, choice.label) : undefined} />}</div>
+                    </div>;
+                  })}
+                </div>
+                {mode === "read" && (revealed ? <div className="revealed-answer" role="status"><strong>Correct answer: {revealed.correctChoice}</strong>{revealed.explanation && <p><LocalizedText>{revealed.explanation}</LocalizedText></p>}</div> : <p className="answer-loading" role="status">{error ? "Answer could not be loaded. Refresh to try again." : "Loading answer…"}</p>)}
+                {mode === "quiz" && revealed && <div className="revealed-answer" role="status"><strong>{answers[question.id] === revealed.correctChoice ? `Correct answer: ${revealed.correctChoice}` : `Incorrect · Correct answer: ${revealed.correctChoice}`}</strong>{revealed.explanation && <p><LocalizedText>{revealed.explanation}</LocalizedText></p>}</div>}
+              </article>
+            );
+          })}
+        </div>
+        <LearnerPagination currentPage={currentPage} pageCount={pageCount} total={questions.length} onChange={changePage} />
         {error && <p className="form-error" role="alert">{error}</p>}
-        {accountRequired && <p className="form-hint">Create an account to save questions. <Link href="/account">Go to your account →</Link></p>}
-        <div className="quiz-submit-row"><span>Answers are checked when you submit.</span><button className="button button-primary" onClick={() => void submitQuiz()} disabled={loading}>{loading ? "Checking…" : "Submit test"} <span aria-hidden>→</span></button></div>
+        {accountRequired && <p className="form-hint">Your learner session expired. <Link href="/account">Sign in again</Link>.</p>}
+        {mode === "quiz" && <div className="quiz-submit-row"><span>Your score is calculated when you submit.</span><button className="button button-primary" onClick={() => void submitQuiz()} disabled={loading}>{loading ? "Checking…" : "Submit quiz"} <span aria-hidden>→</span></button></div>}
       </div>
       <aside className="quiz-aside">
-        <span className="aside-label">YOUR TEST</span>
+        <span className="aside-label">STUDY SET</span>
         <h3>{title}</h3>
         <div className="aside-stat"><span>Questions</span><strong>{questions.length}</strong></div>
-        <div className="aside-stat"><span>Time limit</span><strong>{Math.max(1, questions.length)} min</strong></div>
-        <div className="aside-stat"><span>Answered</span><strong>{answered} / {questions.length}</strong></div>
-        <p>Take your time. Read each question carefully and review the explanations after submitting.</p>
+        <div className="aside-stat"><span>Current page</span><strong>{currentPage} / {pageCount}</strong></div>
+        {mode === "quiz" && <div className="aside-stat"><span>Answered</span><strong>{answered} / {questions.length}</strong></div>}
+        <p>{mode === "read" ? "Read through each question with its answer and explanation." : "Choose an answer to see the correct answer, or submit when you finish."}</p>
       </aside>
     </div>
   );
