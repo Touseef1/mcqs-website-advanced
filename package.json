@@ -10,6 +10,7 @@
     "test": "node --experimental-strip-types --test tests/*.test.ts"
   },
   "dependencies": {
+    "lucide-react": "^1.66.0",
     "mysql2": "^3.24.6",
     "next": "16.4.2",
     "react": "19.3.0",

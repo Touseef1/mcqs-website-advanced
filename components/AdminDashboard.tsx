@@ -7,6 +7,7 @@ import { AdminQuestionWorkspace } from "@/components/AdminQuestionWorkspace";
 import { AdminExams } from "@/components/AdminExams";
 import { AdminActivityLogs } from "@/components/AdminActivityLogs";
 import { useConfirmModal } from "@/components/ConfirmModal";
+import { Activity, Building2, Clock3, FileText, FolderOpen, LayoutDashboard, ListChecks, PanelLeftClose, PanelLeftOpen, Users } from "lucide-react";
 import type { AdminCapabilities, AdminPrincipal, AdminRole } from "@/lib/admin-auth";
 import { ROLE_PERMISSIONS, type AdminPermission } from "@/lib/admin-role-permissions";
 import { ApiResponseError, ConfirmationCancelledError, getErrorMessage, isConfirmationCancelled, parseApiResponse } from "@/lib/error-message";
@@ -28,15 +29,9 @@ const tabLabels: Record<Tab, string> = { overview: "Overview", questions: "MCQ b
 const roleLabels: Record<AdminRole, string> = { data_entry: "Data Entry", reviewer: "Reviewer", publisher: "Publisher", admin: "Admin", super_admin: "Super Admin" };
 
 function NavIcon({ tab }: { tab: Tab }) {
-  const props = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true as const };
-  if (tab === "overview") return <svg {...props}><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1v-9.5z" /></svg>;
-  if (tab === "questions") return <svg {...props}><path d="M8 6h12M8 12h12M8 18h12" /><path d="M4 6h.01M4 12h.01M4 18h.01" /></svg>;
-  if (tab === "review") return <svg {...props}><circle cx="12" cy="12" r="8" /><path d="M12 8v4l2.5 2" /></svg>;
-  if (tab === "categories") return <svg {...props}><path d="M4 7h7l2 2h7v10H4z" /></svg>;
-  if (tab === "exams") return <svg {...props}><path d="M12 3 4 7v6c0 4.2 3.2 6.8 8 8 4.8-1.2 8-3.8 8-8V7z" /></svg>;
-  if (tab === "papers") return <svg {...props}><path d="M7 3h7l5 5v13H7z" /><path d="M14 3v5h5M9 13h6M9 17h6" /></svg>;
-  if (tab === "activity") return <svg {...props}><path d="M4 19V5M4 19h16" /><path d="m7 15 3-4 3 2 5-7" /></svg>;
-  return <svg {...props}><path d="M16 19v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1" /><circle cx="9.5" cy="7.5" r="3" /><path d="M20 8v6M17 11h6" /></svg>;
+  const icons = { overview: LayoutDashboard, questions: ListChecks, review: Clock3, categories: FolderOpen, exams: Building2, papers: FileText, activity: Activity, team: Users };
+  const Icon = icons[tab];
+  return <Icon size={18} strokeWidth={1.8} aria-hidden="true" />;
 }
 
 async function sendAdmin<T = AdminApiData>(path: string, method = "GET", body?: unknown, confirm?: ReturnType<typeof useConfirmModal>): Promise<T> {
@@ -192,7 +187,7 @@ export function AdminDashboard({ principal, capabilities }: { principal: AdminPr
     <div className={`admin-dashboard ${sidebarCollapsed ? "is-sidebar-collapsed" : ""}`}>
       <aside className="admin-sidebar">
         <a className="admin-brand" href="/admin" aria-label="MCQPath admin home"><span className="admin-brand-mark">M</span><span><strong>MCQPath</strong><small>ADMIN WORKSPACE</small></span></a>
-        <button type="button" className="admin-sidebar-collapse" aria-label={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"} title={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"} onClick={() => setSidebarCollapsed((value) => !value)}>{sidebarCollapsed ? "›" : "‹"}</button>
+        <button type="button" className="admin-sidebar-collapse" aria-label={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"} title={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"} onClick={() => setSidebarCollapsed((value) => !value)}>{sidebarCollapsed ? <PanelLeftOpen size={17} aria-hidden="true" /> : <PanelLeftClose size={17} aria-hidden="true" />}</button>
         <nav aria-label="Admin sections">
           <div className="admin-sidebar-group"><div className="admin-sidebar-label">CONTENT</div>{allowedTabs.filter((item) => ["overview", "questions", "review", "categories"].includes(item)).map((item) => <button type="button" key={item} className={tab === item ? "active" : ""} aria-current={tab === item ? "page" : undefined} onClick={() => selectTab(item)} title={tabLabels[item]}><span className="admin-nav-icon"><NavIcon tab={item} /></span><span>{tabLabels[item]}</span>{item === "review" && <span className="admin-nav-count" title={`${dashboardStats.statuses.in_review ?? 0} questions waiting for review`} aria-label={`${dashboardStats.statuses.in_review ?? 0} questions waiting for review`}>{dashboardStats.statuses.in_review ?? 0}</span>}</button>)}</div>
           {allowedTabs.some((item) => ["exams", "papers"].includes(item)) && <div className="admin-sidebar-group"><div className="admin-sidebar-label">PAPERS</div>{allowedTabs.filter((item) => ["exams", "papers"].includes(item)).map((item) => <button type="button" key={item} className={tab === item ? "active" : ""} aria-current={tab === item ? "page" : undefined} onClick={() => selectTab(item)} title={tabLabels[item]}><span className="admin-nav-icon"><NavIcon tab={item} /></span><span>{tabLabels[item]}</span></button>)}</div>}

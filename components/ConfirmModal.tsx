@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
+import { CircleHelp, ShieldAlert, TriangleAlert } from "lucide-react";
 
 export type ConfirmModalOptions = {
   title: string;
@@ -65,9 +66,10 @@ export function ConfirmModalProvider({ children }: { children: ReactNode }) {
 }
 
 function ConfirmModal({ options, busy, onConfirm, onCancel }: { options: ConfirmModalOptions; busy: boolean; onConfirm: () => void; onCancel: () => void }) {
+  const Icon = options.variant === "danger" ? ShieldAlert : options.variant === "warning" ? TriangleAlert : CircleHelp;
   return <div className="confirm-modal-backdrop" role="presentation">
     <section className={`confirm-modal confirm-modal-${options.variant ?? "default"}`} role="alertdialog" aria-modal="true" aria-labelledby="confirm-modal-title" aria-describedby="confirm-modal-message">
-      <span className="confirm-modal-icon" aria-hidden="true">{options.variant === "danger" ? "!" : options.variant === "warning" ? "⚠" : "?"}</span>
+      <span className="confirm-modal-icon" aria-hidden="true"><Icon size={22} strokeWidth={1.9} /></span>
       <h2 id="confirm-modal-title">{options.title}</h2>
       <p id="confirm-modal-message">{options.message}</p>
       <div className="confirm-modal-actions">
