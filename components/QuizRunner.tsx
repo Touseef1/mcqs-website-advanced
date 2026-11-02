@@ -7,6 +7,7 @@ import { getErrorMessage, parseApiResponse } from "@/lib/error-message";
 import { notify } from "@/lib/toast";
 import { MCQImage } from "@/components/MCQImage";
 import { LocalizedText } from "@/components/LocalizedText";
+import ReactPaginate from "react-paginate";
 
 type QuizResult = {
   score: number;
@@ -28,11 +29,29 @@ function LearnerPagination({ currentPage, pageCount, total, onChange }: { curren
   if (pageCount <= 1) return null;
   const first = (currentPage - 1) * PAGE_SIZE + 1;
   const last = Math.min(currentPage * PAGE_SIZE, total);
-  return <nav className="learner-pagination" aria-label="Question pages">
-    <button className="button button-light" type="button" onClick={() => onChange(currentPage - 1)} disabled={currentPage === 1}>Previous</button>
-    <span>Questions {first}–{last} of {total} · Page {currentPage} of {pageCount}</span>
-    <button className="button button-light" type="button" onClick={() => onChange(currentPage + 1)} disabled={currentPage === pageCount}>Next</button>
-  </nav>;
+  return <div className="learner-pagination-wrap" aria-label="Question pages">
+    <p className="learner-pagination-summary">Questions {first}–{last} of {total} · Page {currentPage} of {pageCount}</p>
+    <ReactPaginate
+      breakLabel="…"
+      nextLabel="Next →"
+      onPageChange={({ selected }) => onChange(selected + 1)}
+      pageRangeDisplayed={3}
+      marginPagesDisplayed={1}
+      pageCount={pageCount}
+      forcePage={currentPage - 1}
+      previousLabel="← Previous"
+      renderOnZeroPageCount={null}
+      containerClassName="learner-pagination"
+      pageClassName="learner-pagination-page"
+      pageLinkClassName="learner-pagination-link"
+      activeClassName="is-active"
+      previousClassName="learner-pagination-previous"
+      nextClassName="learner-pagination-next"
+      disabledClassName="is-disabled"
+      breakClassName="learner-pagination-break"
+      breakLinkClassName="learner-pagination-link"
+    />
+  </div>;
 }
 
 export function QuizRunner({ questions, title, quizSlug, quizPath, canBookmark = false }: { questions: PublicQuestion[]; title: string; quizSlug: string; quizPath?: string; canBookmark?: boolean }) {
@@ -41,6 +60,7 @@ export function QuizRunner({ questions, title, quizSlug, quizPath, canBookmark =
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [revealedAnswers, setRevealedAnswers] = useState<Record<number, RevealedAnswer>>({});
   const [pendingAnswerIds, setPendingAnswerIds] = useState<number[]>([]);
+  const [openExplanations, setOpenExplanations] = useState<Record<number, boolean>>({});
   const [result, setResult] = useState<QuizResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -117,9 +137,24 @@ export function QuizRunner({ questions, title, quizSlug, quizPath, canBookmark =
   }
 
   function chooseAnswer(questionId: number, choice: string) {
-    if (mode !== "quiz" || result) return;
+    if (mode !== "quiz" || result || answers[questionId] || pendingAnswerIds.includes(questionId)) return;
     setAnswers((current) => ({ ...current, [questionId]: choice }));
     void revealAnswer(questionId);
+  }
+
+  function changeMode(nextMode: StudyMode) {
+    if (nextMode === mode) return;
+    setMode(nextMode);
+    setAnswers({});
+    setRevealedAnswers({});
+    setPendingAnswerIds([]);
+    setOpenExplanations({});
+    setError("");
+    if (nextMode === "quiz") startedAt.current = Date.now();
+  }
+
+  function toggleExplanation(questionId: number) {
+    setOpenExplanations((current) => ({ ...current, [questionId]: !current[questionId] }));
   }
 
   async function submitQuiz() {
@@ -164,7 +199,7 @@ export function QuizRunner({ questions, title, quizSlug, quizPath, canBookmark =
           <span className="eyebrow">TEST COMPLETE</span>
           <h2>{result.score} <span>/ {questions.length}</span></h2>
           <p>You answered {result.total} questions. Review the answers and explanations below.</p>
-          <button className="button button-primary" onClick={() => { setAnswers({}); setResult(null); setCurrentPage(1); setMode("quiz"); setRevealedAnswers({}); startedAt.current = Date.now(); }}>Try again</button>
+          <button className="button button-primary" onClick={() => { setAnswers({}); setResult(null); setCurrentPage(1); setMode("quiz"); setRevealedAnswers({}); setOpenExplanations({}); startedAt.current = Date.now(); }}>Try again</button>
         </div>
         <div className="review-list">
           <h3>Answer review · questions {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, questions.length)}</h3>
@@ -179,7 +214,10 @@ export function QuizRunner({ questions, title, quizSlug, quizPath, canBookmark =
                 {canBookmark && <button className="question-save-button" onClick={() => void toggleBookmark(question.id)} disabled={savingId === question.id}>{savedIds.includes(question.id) ? "★ Saved question" : "☆ Save question"}</button>}
                 <p className="review-answer">{answer?.selectedChoice ? `Your answer: ${answer.selectedChoice} · ` : "Not answered · "}Correct answer: {answer?.correctChoice}</p>
                 <ul className="review-choice-list">{question.choices.map((choice) => <li className={choice.label === answer?.correctChoice ? "is-correct" : choice.label === answer?.selectedChoice ? "is-selected" : ""} key={choice.label}><b>{choice.label}.</b>{choice.text && <LocalizedText>{choice.text}</LocalizedText>}{choice.imageUrl && <MCQImage src={choice.imageUrl} alt={`Option ${choice.label} image`} size="option" />}</li>)}</ul>
-                <p><LocalizedText>{answer?.explanation ?? "Review the correct answer and explanation."}</LocalizedText></p>
+                {answer?.explanation && <div className="review-explanation">
+                  <button type="button" className="explanation-toggle" aria-expanded={Boolean(openExplanations[question.id])} onClick={() => toggleExplanation(question.id)}>{openExplanations[question.id] ? "Hide explanation" : "Explain more"}</button>
+                  {openExplanations[question.id] && <p><LocalizedText>{answer.explanation}</LocalizedText></p>}
+                </div>}
               </article>
             );
           })}
@@ -195,8 +233,8 @@ export function QuizRunner({ questions, title, quizSlug, quizPath, canBookmark =
         <div className="study-mode-toolbar" role="group" aria-label="Choose study mode">
           <div><strong>Choose how to study</strong><span>{mode === "read" ? "Answers are visible as you read." : "Choose an option to reveal its answer, or submit the full set for your score."}</span></div>
           <div className="study-mode-buttons">
-            <button type="button" aria-pressed={mode === "read"} className={mode === "read" ? "is-active" : ""} onClick={() => { setMode("read"); setError(""); }}>Read mode</button>
-            <button type="button" aria-pressed={mode === "quiz"} className={mode === "quiz" ? "is-active" : ""} onClick={() => { setMode("quiz"); setError(""); startedAt.current = Date.now(); }}>Quiz mode</button>
+            <button type="button" aria-pressed={mode === "read"} className={mode === "read" ? "is-active" : ""} onClick={() => changeMode("read")}>Read mode</button>
+            <button type="button" aria-pressed={mode === "quiz"} className={mode === "quiz" ? "is-active" : ""} onClick={() => changeMode("quiz")}>Quiz mode</button>
           </div>
         </div>
         {mode === "quiz" && <>
@@ -207,6 +245,7 @@ export function QuizRunner({ questions, title, quizSlug, quizPath, canBookmark =
           {visibleQuestions.map((question, index) => {
             const revealed = revealedAnswers[question.id];
             const pending = pendingAnswerIds.includes(question.id);
+            const locked = mode === "quiz" && Boolean(answers[question.id]);
             const questionNumber = (currentPage - 1) * PAGE_SIZE + index + 1;
             return (
               <article className="quiz-question" key={question.id}>
@@ -222,13 +261,13 @@ export function QuizRunner({ questions, title, quizSlug, quizPath, canBookmark =
                     const isCorrect = revealed?.correctChoice === choice.label;
                     const classNames = ["choice-option", selected && "selected", revealed && isCorrect && "is-revealed-correct", revealed && selected && !isCorrect && "is-revealed-wrong"].filter(Boolean).join(" ");
                     return <div className={classNames} key={choice.label} onClick={(event) => { if (!(event.target instanceof HTMLInputElement) && !(event.target instanceof HTMLButtonElement)) chooseAnswer(question.id, choice.label); }}>
-                      {mode === "quiz" && <input id={inputId} type="radio" name={`question-${question.id}`} aria-label={`Option ${choice.label}`} value={choice.label} checked={selected} disabled={loading || pending} onChange={() => chooseAnswer(question.id, choice.label)} />}
+                      {mode === "quiz" && <input id={inputId} type="radio" name={`question-${question.id}`} aria-label={`Option ${choice.label}`} value={choice.label} checked={selected} disabled={loading || pending || locked} onChange={() => chooseAnswer(question.id, choice.label)} />}
                       <span className="choice-label">{choice.label}</span><div className="choice-content">{choice.text && <span className="choice-text"><LocalizedText>{choice.text}</LocalizedText></span>}{choice.imageUrl && <MCQImage src={choice.imageUrl} alt={`Option ${choice.label} image`} size="option" onActivate={mode === "quiz" ? () => chooseAnswer(question.id, choice.label) : undefined} />}</div>
                     </div>;
                   })}
                 </div>
-                {mode === "read" && (revealed ? <div className="revealed-answer" role="status"><strong>Correct answer: {revealed.correctChoice}</strong>{revealed.explanation && <p><LocalizedText>{revealed.explanation}</LocalizedText></p>}</div> : <p className="answer-loading" role="status">{error ? "Answer could not be loaded. Refresh to try again." : "Loading answer…"}</p>)}
-                {mode === "quiz" && revealed && <div className="revealed-answer" role="status"><strong>{answers[question.id] === revealed.correctChoice ? `Correct answer: ${revealed.correctChoice}` : `Incorrect · Correct answer: ${revealed.correctChoice}`}</strong>{revealed.explanation && <p><LocalizedText>{revealed.explanation}</LocalizedText></p>}</div>}
+                {mode === "read" && (revealed ? <div className="revealed-answer" role="status"><strong>Correct answer: {revealed.correctChoice}</strong>{revealed.explanation && <div className="revealed-explanation"><button type="button" className="explanation-toggle" aria-expanded={Boolean(openExplanations[question.id])} onClick={() => toggleExplanation(question.id)}>{openExplanations[question.id] ? "Hide explanation" : "Explain more"}</button>{openExplanations[question.id] && <p><LocalizedText>{revealed.explanation}</LocalizedText></p>}</div>}</div> : <p className="answer-loading" role="status">{error ? "Answer could not be loaded. Refresh to try again." : "Loading answer…"}</p>)}
+                {mode === "quiz" && revealed && <div className="revealed-answer" role="status"><strong>{answers[question.id] === revealed.correctChoice ? `Correct answer: ${revealed.correctChoice}` : `Incorrect · Correct answer: ${revealed.correctChoice}`}</strong>{revealed.explanation && <div className="revealed-explanation"><button type="button" className="explanation-toggle" aria-expanded={Boolean(openExplanations[question.id])} onClick={() => toggleExplanation(question.id)}>{openExplanations[question.id] ? "Hide explanation" : "Explain more"}</button>{openExplanations[question.id] && <p><LocalizedText>{revealed.explanation}</LocalizedText></p>}</div>}</div>}
               </article>
             );
           })}
