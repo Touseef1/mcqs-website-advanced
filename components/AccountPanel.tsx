@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { BookOpen, Bookmark, CircleCheck, ChartNoAxesColumnIncreasing, Eye, EyeOff, ArrowRight } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import type { LearnerPrincipal } from "@/lib/learner-auth";
@@ -27,10 +28,11 @@ type SavedQuestion = { questionId: number; topicSlug: string; prompt: string; la
 
 export function AccountPanel({ learner }: { learner: LearnerPrincipal | null }) {
   const router = useRouter();
-  const [mode, setMode] = useState<"login" | "register">("register");
+  const [mode, setMode] = useState<"login" | "register">("login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -86,21 +88,21 @@ export function AccountPanel({ learner }: { learner: LearnerPrincipal | null }) 
 
   if (!learner) {
     return (
-      <section className="account-auth-card">
-        <span className="eyebrow">YOUR STUDY SPACE</span>
-        <h1>{mode === "register" ? "Create your free account" : "Welcome back"}</h1>
-        <p>Save useful questions and keep track of your practice results.</p>
-        <form className="account-form" onSubmit={submit}>
-          {mode === "register" && <label>Your name<input autoComplete="name" required minLength={2} maxLength={140} value={name} onChange={(event) => setName(event.target.value)} /></label>}
-          <label>Email address<input type="email" autoComplete="email" required maxLength={190} value={email} onChange={(event) => setEmail(event.target.value)} /></label>
-          <label>Password<input type="password" autoComplete={mode === "register" ? "new-password" : "current-password"} required minLength={mode === "register" ? 8 : 1} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} />{mode === "register" && <small>Use at least 8 characters.</small>}</label>
-          {error && <p className="form-error" role="alert">{error}</p>}
-          {message && <p className="form-success" role="status">{message}</p>}
-          <button className="button button-primary" disabled={busy}>{busy ? "Please wait…" : mode === "register" ? "Create account" : "Sign in"}<span aria-hidden>→</span></button>
-        </form>
-        {mode === "login" && <div className="account-switch"><Link href="/account/forgot-password">Forgot password?</Link> · <Link href="/account/resend-verification">Resend verification email</Link></div>}
-        <p className="account-switch">{mode === "register" ? "Already have an account?" : "New to MCQPath?"} <button onClick={() => { setMode(mode === "register" ? "login" : "register"); setError(""); }}>{mode === "register" ? "Sign in" : "Create an account"}</button></p>
-        <p className="account-note">You can still practise quizzes without an account.</p>
+      <section className="learner-auth-shell">
+        <aside className="learner-auth-story"><Link href="/" className="auth-wordmark">MCQPath</Link><h2>Your next step<br />starts here.</h2><ul><li><Bookmark aria-hidden="true" />Save useful questions</li><li><CircleCheck aria-hidden="true" />Review your mistakes</li><li><ChartNoAxesColumnIncreasing aria-hidden="true" />Track subject progress</li></ul><BookOpen className="auth-book-art" strokeWidth={0.8} aria-hidden="true" /></aside>
+        <div className="learner-auth-form">
+          <div className="auth-mode-switch" role="group" aria-label="Account access">{(["login", "register"] as const).map(value => <button key={value} type="button" aria-pressed={mode === value} disabled={busy} onClick={() => { setMode(value); setError(""); setMessage(""); setShowPassword(false); }}>{value === "login" ? "Sign in" : "Create account"}</button>)}</div>
+          <h1>{mode === "register" ? "Create your account" : "Welcome back"}</h1><p>{mode === "register" ? "Build a study routine that works for you." : "Sign in to continue your learning journey."}</p>
+          <form className="account-form" onSubmit={submit}>
+            {mode === "register" && <label>Your name<input autoComplete="name" required minLength={2} maxLength={140} value={name} onChange={event => setName(event.target.value)} /></label>}
+            <label>Email address<input type="email" placeholder="you@example.com" autoComplete="email" required maxLength={190} value={email} onChange={event => setEmail(event.target.value)} /></label>
+            <div><label htmlFor="learner-password">Password</label><div className="auth-password-field"><input id="learner-password" type={showPassword ? "text" : "password"} autoComplete={mode === "register" ? "new-password" : "current-password"} required minLength={mode === "register" ? 8 : 1} maxLength={128} value={password} onChange={event => setPassword(event.target.value)} /><button type="button" aria-label={showPassword ? "Hide password" : "Show password"} aria-pressed={showPassword} onClick={() => setShowPassword(!showPassword)}>{showPassword ? <EyeOff size={19} /> : <Eye size={19} />}</button></div>{mode === "register" && <small>Use at least 8 characters.</small>}</div>
+            {mode === "login" && <Link className="auth-forgot" href="/account/forgot-password">Forgot password?</Link>}
+            {error && <p className="form-error" role="alert">{error}</p>}{message && <p className="form-success" role="status">{message}</p>}
+            <button className="button button-primary" disabled={busy}>{busy ? "Please wait…" : mode === "register" ? "Create account" : "Sign in"}<ArrowRight size={18} aria-hidden="true" /></button>
+          </form>
+          <p className="auth-resend">Need a verification email? <Link href="/account/resend-verification">Resend email</Link></p><Link className="auth-guest" href="/subjects">Continue practising without an account</Link>
+        </div>
       </section>
     );
   }

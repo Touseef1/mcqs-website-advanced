@@ -1922,3 +1922,75 @@ body:has(.admin-page) { background: #f4f7f5; color: #1c332b; }
   direction: rtl;
 }
 .urdu-aware-input { font-family: "Noto Nastaliq Urdu", serif; line-height: 2.3; direction: rtl; }
+
+/* Approved homepage and learner sign-in design. */
+.home-refresh { max-width: 1200px; margin: 0 auto; padding: 0 28px 48px; }
+.home-intro { position: relative; overflow: hidden; padding: 58px 36px 40px; border-bottom: 1px solid var(--line); background: var(--paper); }
+.home-intro > div { position: relative; z-index: 1; max-width: 690px; }
+.home-intro h1 { margin: 12px 0; font-size: clamp(32px,4vw,52px); line-height: 1.12; letter-spacing: -.045em; }
+.home-intro p { margin: 0 0 24px; color: var(--muted); font-size: 18px; }
+.home-intro .search-form { width: 100%; max-width: 630px; border: 1px solid var(--line); box-shadow: none; }
+.home-intro .search-form input { font-size: 15px; }
+.home-intro .search-form button { background: #236b53; color: white; font-size: 14px; }
+.home-book-art { position: absolute; right: 8px; bottom: 14px; width: 235px; height: 235px; color: var(--green); opacity: .12; transform: rotate(-9deg); }
+.home-library-counts { margin-top: 16px; color: var(--muted); font-size: 13px; }
+.home-block { padding: 32px 0 8px; }
+.home-block .section-heading { margin-bottom: 18px; }
+.home-block .section-heading h2 { font-family: inherit; font-size: 27px; letter-spacing: -.035em; }
+.home-block .text-link { display: inline-flex; align-items: center; gap: 8px; }
+.home-subjects { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+.home-subjects .subject-card { border-radius: 8px; padding: 20px; box-shadow: none; }
+.home-paper-list { overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: var(--white); }
+.home-paper-row { display: flex; align-items: center; gap: 16px; padding: 18px 20px; border-bottom: 1px solid var(--line); }
+.home-paper-row:last-child { border-bottom: 0; }
+.home-paper-row > svg { flex-shrink: 0; color: var(--green); }
+.home-paper-row > div { flex: 1; min-width: 0; }
+.home-paper-row strong { display: block; font-size: 16px; }
+.home-paper-row small { color: var(--muted); font-size: 12px; }
+.home-paper-row > span { display: inline-flex; gap: 8px; align-items: center; color: var(--green); font-size: 13px; font-weight: 700; white-space: nowrap; }
+.home-paper-row:hover { background: var(--mint); }
+.home-paper-list .account-empty { padding: 20px; }
+.home-study-strip { display: flex; align-items: center; gap: 18px; margin-top: 30px; padding: 24px; background: var(--mint); border-radius: 8px; }
+.home-study-strip > div { flex: 1; }
+.home-study-strip h2 { margin: 0; font-size: 22px; }
+.home-study-strip p { margin: 4px 0 0; font-size: 14px; color: var(--ink-2); }
+.learner-auth-shell { display: grid; grid-template-columns: .9fr 1.1fr; overflow: hidden; margin: 40px auto 64px; border: 1px solid var(--line); border-radius: 12px; background: var(--white); box-shadow: 0 12px 35px rgba(18,50,35,.04); }
+.learner-auth-story { display: flex; flex-direction: column; padding: 46px 36px; background: #19533f; color: #fff; }
+.auth-wordmark { font-size: 26px; font-weight: 800; letter-spacing: -.04em; }
+.learner-auth-story h2 { margin: 44px 0 28px; font-size: clamp(30px,3vw,42px); line-height: 1.15; letter-spacing: -.035em; }
+.learner-auth-story ul { display: grid; gap: 24px; margin: 0; padding: 0; list-style: none; }
+.learner-auth-story li { display: flex; gap: 15px; align-items: center; font-size: 16px; }
+.learner-auth-story li svg { flex-shrink: 0; }
+.auth-book-art { width: 190px; height: 150px; margin: auto auto 0; padding-top: 35px; color: #d7e6bf; }
+.learner-auth-form { padding: 44px; }
+.auth-mode-switch { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); padding: 3px; border-radius: 8px; }
+.auth-mode-switch button { min-height: 42px; border: 0; border-radius: 5px; background: transparent; color: var(--ink); font-size: 15px; cursor: pointer; }
+.auth-mode-switch button[aria-pressed="true"] { background: #236b53; color: #fff; }
+.learner-auth-form h1 { margin: 32px 0 8px; font-size: 34px; line-height: 1.2; letter-spacing: -.04em; }
+.learner-auth-form > p { margin: 0; color: var(--muted); font-size: 14px; }
+.learner-auth-form .account-form { margin-top: 26px; }
+.learner-auth-form .account-form label { color: var(--ink); }
+.learner-auth-form .account-form input { background: var(--white); color: var(--ink); border-color: var(--line); }
+.auth-password-field { position: relative; margin-top: 7px; }
+.auth-password-field input { padding-right: 48px; }
+.auth-password-field button { position: absolute; top: 0; right: 0; width: 46px; height: 100%; display: grid; place-items: center; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
+.auth-forgot { justify-self: end; color: var(--green); font-size: 13px; text-decoration: underline; }
+.learner-auth-form .auth-resend { margin-top: 25px; text-align: center; font-size: 13px; }
+.auth-resend a { color: var(--green); text-decoration: underline; }
+.auth-guest { display: block; margin-top: 22px; text-align: center; font-size: 14px; color: var(--green); }
+:root[data-theme="dark"] .learner-auth-story { background: #123e2e; }
+@media (max-width: 760px) {
+  .home-refresh { padding: 0 16px 32px; }
+  .home-intro { padding: 34px 4px 28px; }
+  .home-book-art { display: none; }
+  .home-subjects { grid-template-columns: 1fr; }
+  .home-study-strip { flex-wrap: wrap; }
+  .home-study-strip .button { width: 100%; }
+  .home-paper-row { padding: 16px 12px; gap: 10px; flex-wrap: wrap; }
+  .home-paper-row > span { margin-left: 35px; }
+  .learner-auth-shell { grid-template-columns: 1fr; margin: 20px auto 36px; }
+  .learner-auth-story { padding: 24px; }
+  .learner-auth-story h2 { margin: 18px 0 0; font-size: 28px; }
+  .learner-auth-story ul, .auth-book-art { display: none; }
+  .learner-auth-form { padding: 26px 22px; }
+}

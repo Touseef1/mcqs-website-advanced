@@ -15,7 +15,7 @@ export function SiteHeader() {
           <Link href="/#practice">Practice tests</Link>
           <Link href="/account">My account</Link>
         </nav>
-        <div className="header-actions"><ThemeToggle /><Link className="header-cta" href="/subjects">Start practising <span aria-hidden>↗</span></Link></div>
+        <div className="header-actions"><ThemeToggle /><Link className="header-cta" href="/account">My account <span aria-hidden>↗</span></Link></div>
       </div>
     </header>
   );
