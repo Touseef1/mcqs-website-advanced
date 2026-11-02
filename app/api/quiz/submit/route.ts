@@ -34,7 +34,7 @@ export async function POST(request: Request) {
   const result = await gradeQuestions(answers);
   const learner = await getLearnerPrincipal();
   const rawQuizPath = "quizPath" in body && typeof body.quizPath === "string" ? body.quizPath : "";
-  const quizPath = /^\/(quiz|past-papers)\/[a-z0-9][a-z0-9-]{0,239}$/i.test(rawQuizPath) ? rawQuizPath : "/subjects";
+  const quizPath = /^\/(quiz|past-papers)\/[a-z0-9][a-z0-9-]{0,239}$/i.test(rawQuizPath) || rawQuizPath === "/account" ? rawQuizPath : "/subjects";
   const quizTitle = "quizTitle" in body && typeof body.quizTitle === "string" ? body.quizTitle.trim().slice(0, 220) : "Practice quiz";
   const elapsedSeconds = "elapsedSeconds" in body && typeof body.elapsedSeconds === "number" && Number.isFinite(body.elapsedSeconds)
     ? Math.max(0, Math.min(7200, Math.floor(body.elapsedSeconds)))
@@ -57,6 +57,12 @@ export async function POST(request: Request) {
            SELECT ?, ?, q.id, q.topic_id, ?, ?, ?, q.current_revision_id FROM questions q WHERE q.id = ? AND q.status = 'published'`,
           [learner.id, attemptId, selected.get(answer.questionId) ?? null, answer.correctChoice, answer.correct, answer.questionId],
         );
+        if (!answer.correct) {
+          await connection.execute(
+            "DELETE FROM learner_wrong_question_dismissals WHERE learner_id = ? AND question_id = ?",
+            [learner.id, answer.questionId],
+          );
+        }
       }
       await connection.commit();
     } catch (error) { attemptHistorySaved = false; await connection.rollback(); console.error("Could not save learner quiz attempt answers", error); }

@@ -54,7 +54,7 @@ function LearnerPagination({ currentPage, pageCount, total, onChange }: { curren
   </div>;
 }
 
-export function QuizRunner({ questions, title, quizSlug, quizPath, canBookmark = false }: { questions: PublicQuestion[]; title: string; quizSlug: string; quizPath?: string; canBookmark?: boolean }) {
+export function QuizRunner({ questions, title, quizSlug, quizPath, canBookmark = false, onRemoveQuestion, removingQuestionId }: { questions: PublicQuestion[]; title: string; quizSlug: string; quizPath?: string; canBookmark?: boolean; onRemoveQuestion?: (questionId: number) => void; removingQuestionId?: number | null }) {
   const [mode, setMode] = useState<StudyMode>("quiz");
   const [currentPage, setCurrentPage] = useState(1);
   const [answers, setAnswers] = useState<Record<number, string>>({});
@@ -69,6 +69,9 @@ export function QuizRunner({ questions, title, quizSlug, quizPath, canBookmark =
   const startedAt = useRef<number | null>(null);
   const pageCount = Math.max(1, Math.ceil(questions.length / PAGE_SIZE));
   const visibleQuestions = questions.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const reviewQuestions = result ? questions.filter((question) => result.results.some((answer) => answer.questionId === question.id)) : [];
+  const reviewPageCount = Math.max(1, Math.ceil(reviewQuestions.length / PAGE_SIZE));
+  const visibleReviewQuestions = reviewQuestions.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
   const answered = Object.keys(answers).length;
   const progress = questions.length ? Math.round((answered / questions.length) * 100) : 0;
 
@@ -160,7 +163,7 @@ export function QuizRunner({ questions, title, quizSlug, quizPath, canBookmark =
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          answers: questions.map((question) => ({ questionId: question.id, choice: answers[question.id] ?? "" })),
+          answers: questions.filter((question) => Boolean(answers[question.id])).map((question) => ({ questionId: question.id, choice: answers[question.id] })),
           quizTitle: title,
           quizPath: quizPath ?? `/quiz/${quizSlug}`,
           elapsedSeconds: Math.max(0, Math.floor((Date.now() - (startedAt.current ?? Date.now())) / 1000)),
@@ -182,6 +185,26 @@ export function QuizRunner({ questions, title, quizSlug, quizPath, canBookmark =
     setError("");
   }
 
+  function changeReviewPage(page: number) {
+    setCurrentPage(Math.max(1, Math.min(reviewPageCount, page)));
+    setError("");
+  }
+
+  function removeWrongQuestion(questionId: number) {
+    onRemoveQuestion?.(questionId);
+    setCurrentPage(1);
+    setAnswers((current) => {
+      const next = { ...current };
+      delete next[questionId];
+      return next;
+    });
+    setRevealedAnswers((current) => {
+      const next = { ...current };
+      delete next[questionId];
+      return next;
+    });
+  }
+
   if (!questions.length) {
     return <div className="empty-state"><span className="empty-icon">✓</span><h2>Questions are on the way</h2><p>This topic does not have published questions yet.</p></div>;
   }
@@ -191,13 +214,14 @@ export function QuizRunner({ questions, title, quizSlug, quizPath, canBookmark =
       <section className="quiz-result">
         <div className="result-summary">
           <span className="eyebrow">TEST COMPLETE</span>
-          <h2>{result.score} <span>/ {questions.length}</span></h2>
+          <h2>{result.score} <span>/ {result.total}</span></h2>
+          <p className="result-percentage">{result.total ? Math.round((result.score / result.total) * 100) : 0}% correct from answered questions</p>
           <p>You answered {result.total} questions. Review the answers and explanations below.</p>
           <button className="button button-primary" onClick={() => { setAnswers({}); setResult(null); setCurrentPage(1); setMode("quiz"); setRevealedAnswers({}); startedAt.current = Date.now(); }}>Try again</button>
         </div>
         <div className="review-list">
-          <h3>Answer review · questions {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, questions.length)}</h3>
-          {visibleQuestions.map((question, index) => {
+          <h3>Answer review · questions {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, reviewQuestions.length)} of {reviewQuestions.length}</h3>
+          {visibleReviewQuestions.map((question, index) => {
             const answer = result.results.find((item) => item.questionId === question.id);
             return (
               <article className="review-item" key={question.id}>
@@ -212,10 +236,11 @@ export function QuizRunner({ questions, title, quizSlug, quizPath, canBookmark =
                   <summary>Show explanation</summary>
                   <p><LocalizedText>{answer?.explanation || question.explanation}</LocalizedText></p>
                 </details>}
+                {onRemoveQuestion && <button type="button" className="account-wrong-remove" disabled={removingQuestionId === question.id} onClick={() => removeWrongQuestion(question.id)}>{removingQuestionId === question.id ? "Removing…" : "Remove from wrong questions"}</button>}
               </article>
             );
           })}
-          <LearnerPagination currentPage={currentPage} pageCount={pageCount} total={questions.length} onChange={changePage} />
+          <LearnerPagination currentPage={currentPage} pageCount={reviewPageCount} total={reviewQuestions.length} onChange={changeReviewPage} />
         </div>
       </section>
     );
@@ -267,6 +292,7 @@ export function QuizRunner({ questions, title, quizSlug, quizPath, canBookmark =
                   <summary>Show explanation</summary>
                   <p><LocalizedText>{question.explanation}</LocalizedText></p>
                 </details>}
+                {onRemoveQuestion && <button type="button" className="account-wrong-remove" disabled={removingQuestionId === question.id} onClick={() => removeWrongQuestion(question.id)}>{removingQuestionId === question.id ? "Removing…" : "Remove from wrong questions"}</button>}
               </article>
             );
           })}
@@ -274,7 +300,7 @@ export function QuizRunner({ questions, title, quizSlug, quizPath, canBookmark =
         <LearnerPagination currentPage={currentPage} pageCount={pageCount} total={questions.length} onChange={changePage} />
         {error && <p className="form-error" role="alert">{error}</p>}
         {accountRequired && <p className="form-hint">Your learner session expired. <Link href="/account">Sign in again</Link>.</p>}
-        {mode === "quiz" && <div className="quiz-submit-row"><span>Your score is calculated when you submit.</span><button className="button button-primary" onClick={() => void submitQuiz()} disabled={loading}>{loading ? "Checking…" : "Submit quiz"} <span aria-hidden>→</span></button></div>}
+        {mode === "quiz" && <div className="quiz-submit-row"><span>Your score is calculated from the questions you answer.</span><button className="button button-primary" onClick={() => void submitQuiz()} disabled={loading || answered === 0}>{loading ? "Checking…" : "Submit quiz"} <span aria-hidden>→</span></button></div>}
       </div>
       <aside className="quiz-aside">
         <span className="aside-label">STUDY SET</span>

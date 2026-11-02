@@ -121,7 +121,7 @@ flowchart LR
 
 ### Quiz answer handling
 
-The public quiz payload is produced with `toPublicQuestion()` in `lib/data.ts`, which omits `correctChoice`. After submission, `/api/quiz/submit` validates the answer list and calls `gradeQuestions()` on the server. Correct answers and explanations are looked up server-side. If a learner is signed in, the handler also records the attempt in `quiz_attempts`.
+The public quiz payload is produced with `toPublicQuestion()` in `lib/data.ts`, which omits `correctChoice`. After submission, `/api/quiz/submit` validates the answer list and calls `gradeQuestions()` on the server. Only selected answers are submitted, so attempt totals and percentages exclude unanswered questions. If a learner is signed in, the handler records the attempt and selected answers in `quiz_attempts` and `quiz_attempt_answers`. `/api/learner/wrong-questions` builds a retry list from incorrect selected answers; learners can read or quiz those questions and dismiss them without deleting attempt history. A later wrong answer makes a dismissed question appear again.
 
 ## 5. MySQL schema and relationships
 
@@ -148,7 +148,8 @@ All primary content tables use InnoDB and `utf8mb4`. IDs are unsigned auto-incre
 | `admin_users` | `id`, `name`, `email`, `password_hash`, `role`, `status`, timestamps | Staff accounts. Email is unique. Database roles are `super_admin`, `admin`, `data_entry`, `reviewer`, and `publisher`; migration 006 maps legacy `editor` to `data_entry` and legacy Paper Manager `admin` to `publisher`. The bootstrap Super Admin is persisted in this table at first login. |
 | `learners` | `id`, `name`, `email`, `password_hash`, `status`, timestamps | Learner accounts. Email is unique. |
 | `learner_bookmarks` | `learner_id`, `question_id`, `created_at` | Join table saving questions per learner. Composite primary key prevents duplicate bookmarks. |
-| `quiz_attempts` | `id`, `learner_id`, `quiz_title`, `quiz_path`, `score`, `question_count`, `elapsed_seconds`, `completed_at` | Stores a learner's quiz history and score summary. |
+| `quiz_attempts` | `id`, `learner_id`, `quiz_title`, `quiz_path`, `score`, `question_count`, `elapsed_seconds`, `completed_at` | Stores a learner's quiz history and score summary; `question_count` reflects selected answers, not unanswered questions. |
+| `learner_wrong_question_dismissals` | `learner_id`, `question_id`, `dismissed_at` | Hides a missed question from that learner's retry list without deleting attempt history; migration 013 creates it. |
 
 ### Field formats and constraints
 
@@ -166,7 +167,8 @@ This table summarizes the MySQL storage types and the most important rules from 
 | `admin_users` | `id BIGINT UNSIGNED`; `name VARCHAR(140)`; `email VARCHAR(190)`; `password_hash VARCHAR(180)`; `role ENUM('super_admin','admin','data_entry','reviewer','publisher')`; `status ENUM('active','inactive')`; session/security fields; timestamps | Unique email; index on role/status. Bootstrap `super_admin` is stored in the database after first login. |
 | `learners` | `id BIGINT UNSIGNED`; `name VARCHAR(140)`; `email VARCHAR(190)`; `password_hash VARCHAR(180)`; `status ENUM('active','inactive')`; timestamps | Unique email; index on status. |
 | `learner_bookmarks` | `learner_id BIGINT UNSIGNED`; `question_id BIGINT UNSIGNED`; `created_at TIMESTAMP` | Composite primary key `(learner_id, question_id)`; both FKs cascade on delete. |
-| `quiz_attempts` | `id BIGINT UNSIGNED`; `learner_id BIGINT UNSIGNED`; `quiz_title VARCHAR(220)`; `quiz_path VARCHAR(260)`; `score SMALLINT UNSIGNED`; `question_count SMALLINT UNSIGNED`; `elapsed_seconds INT UNSIGNED`; `completed_at TIMESTAMP` | FK to learner; index on learner/completion date. |
+| `quiz_attempts` | `id BIGINT UNSIGNED`; `learner_id BIGINT UNSIGNED`; `quiz_title VARCHAR(220)`; `quiz_path VARCHAR(260)`; `score SMALLINT UNSIGNED`; `question_count SMALLINT UNSIGNED`; `elapsed_seconds INT UNSIGNED`; `completed_at TIMESTAMP` | FK to learner; index on learner/completion date. New attempts count selected answers only; progress derives legacy attempted totals from non-null `selected_choice` values. |
+| `learner_wrong_question_dismissals` | `learner_id BIGINT UNSIGNED`; `question_id BIGINT UNSIGNED`; `dismissed_at TIMESTAMP` | Composite primary key; learner/question foreign keys cascade on deletion. A future wrong answer clears the dismissal so the question returns to practice. |
 | `learner_action_tokens` | Learner ID, SHA-256 token hash, verification/reset purpose, expiry, used timestamp | Single-use email verification and password reset tokens; cascades with learner deletion. |
 | `quiz_attempt_answers` | Attempt, learner, question/topic IDs, selected/correct choices, correctness flag, nullable `question_revision_id` | Stores answer review and supports weak-topic estimates; the revision link preserves the exact question/options version. One row per question per attempt. |
 | `question_revisions` | `id`, `question_id`, `revision_number`, JSON content snapshot, nullable creator, timestamp | Stores the published question and options snapshot used to preserve historical quiz results. |

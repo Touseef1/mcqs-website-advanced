@@ -60,6 +60,7 @@ MCQPath is a search-friendly MCQ and exam-practice website for learners in Pakis
    sudo mysql < sql/migrations/010_link_source_matched_paper_questions.sql
    sudo mysql < sql/migrations/011_question_language.sql
    sudo mysql < sql/migrations/012_ensure_question_language.sql
+   sudo mysql < sql/migrations/013_learner_wrong_question_dismissals.sql
    sudo mysql < sql/seed.sql
    ```
 
@@ -79,7 +80,7 @@ MCQPath is a search-friendly MCQ and exam-practice website for learners in Pakis
 
    Open [http://localhost:3000](http://localhost:3000). The admin area is at `/admin`.
 
-Without MySQL, the site shows category placeholders only; it does not show generated MCQs or sample papers. The admin area requires MySQL and migrations `001` through `012` in order, as detailed in `docs/MIGRATIONS.md`. Learner registration, bookmarks, and quiz history additionally require migration `003` and `SESSION_SECRET`.
+Without MySQL, the site shows category placeholders only; it does not show generated MCQs or sample papers. The admin area requires MySQL and migrations `001` through `013` in order, as detailed in `docs/MIGRATIONS.md`. Learner registration, bookmarks, quiz history, and the wrong-question retry list additionally require migrations `003` and `013` plus `SESSION_SECRET`.
 
 Every MCQ needs an exam/source reference in the admin form. MCQs without this reference cannot be published. MCQs follow the shared draft, review, approval, publication, rejection, and archive state machine. Data Entry staff can edit their own drafts or rejected items and add MCQs to papers; inline paper creation requires the separate `paper.quickcreate` permission. The paper builder searches the bank and orders questions. See `docs/ADMIN_ROLES.md` and `docs/MIGRATIONS.md` for permissions and upgrades.
 
