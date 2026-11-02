@@ -1184,6 +1184,15 @@ body:has(.admin-page) { background: #f3f7f4; }
 .admin-sidebar-group + .admin-sidebar-group { margin-top: 14px; }
 .admin-sidebar-group .admin-sidebar-label { padding: 5px 12px 2px; color: #a6c5b7; font-size: 9px; font-weight: 800; letter-spacing: .12em; }
 .admin-sidebar-group nav { margin-top: 0; }
+.admin-sidebar-head { min-width: 0; margin: 0 0 24px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.admin-sidebar-head .admin-brand { min-width: 0; margin: 0; gap: 10px; }
+.admin-sidebar-head .admin-brand > span:last-child { min-width: 0; }
+.admin-sidebar-collapse { width: 34px; height: 34px; flex: 0 0 34px; margin: 0; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.2); border-radius: 9px; background: rgba(255,255,255,.07); color: #e1eee7; cursor: pointer; }
+.admin-sidebar-collapse:hover { background: rgba(255,255,255,.14); color: #fff; }
+.admin-sidebar-collapse:focus-visible { outline: 3px solid #d7ef73; outline-offset: 2px; }
+.admin-dashboard.is-sidebar-collapsed .admin-sidebar-head { flex-direction: column; gap: 12px; margin-bottom: 18px; }
+.admin-dashboard.is-sidebar-collapsed .admin-sidebar-head .admin-brand { justify-content: center; }
+.admin-dashboard.is-sidebar-collapsed .admin-sidebar-collapse { margin: 0; }
 .admin-dashboard.is-sidebar-collapsed { grid-template-columns: 78px minmax(0,1fr); }
 .admin-dashboard.is-sidebar-collapsed .admin-sidebar { padding-inline: 12px; }
 .admin-dashboard.is-sidebar-collapsed .admin-brand { justify-content: center; margin-inline: 0; }
@@ -1436,6 +1445,245 @@ body:has(.admin-page) { background: #f4f7f5; color: #1c332b; }
 .exam-sheet-topics p { margin: 10px 0 0; color: #6d7f75; font-size: 14px; line-height: 1.6; }
 .exam-sheet-topics > a { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid #e8ece7; color: #234237; font-size: 15px; font-weight: 700; }
 .exam-sheet-topics > a small { color: #6d7f75; font-size: 12px; font-weight: 650; }
+
+/* Site-wide color theme. The selected mode is stored in localStorage and shared by public/admin pages. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #101916;
+  --white: #18231f;
+  --ink: #e5eee9;
+  --ink-2: #c8d5ce;
+  --muted: #a0b1a8;
+  --line: #33443b;
+  --green: #68bd96;
+  --green-dark: #83d1aa;
+  --mint: #263c31;
+  --lime: #cbe66c;
+  --shadow: 0 18px 55px rgba(0,0,0,.28);
+}
+:root[data-theme="dark"] body { background: #101916; color: #e5eee9; }
+:root[data-theme="dark"] .site-header,
+:root[data-theme="dark"] .stats-strip,
+:root[data-theme="dark"] .subject-card,
+:root[data-theme="dark"] .topic-card,
+:root[data-theme="dark"] .popular-topic,
+:root[data-theme="dark"] .paper-card,
+:root[data-theme="dark"] .closing-cta,
+:root[data-theme="dark"] .preview-question,
+:root[data-theme="dark"] .empty-inline,
+:root[data-theme="dark"] .quiz-main,
+:root[data-theme="dark"] .choice-option,
+:root[data-theme="dark"] .review-list,
+:root[data-theme="dark"] .paper-topics,
+:root[data-theme="dark"] .search-result,
+:root[data-theme="dark"] .loading-panel,
+:root[data-theme="dark"] .empty-state,
+:root[data-theme="dark"] .admin-card,
+:root[data-theme="dark"] .account-auth-card,
+:root[data-theme="dark"] .account-metrics article,
+:root[data-theme="dark"] .account-section,
+:root[data-theme="dark"] .admin-panel,
+:root[data-theme="dark"] .admin-metric-card,
+:root[data-theme="dark"] .review-question-card,
+:root[data-theme="dark"] .review-decision-card,
+:root[data-theme="dark"] .mcq-live-preview article,
+:root[data-theme="dark"] .mcq-option-card,
+:root[data-theme="dark"] .category-card,
+:root[data-theme="dark"] .exam-paper-card,
+:root[data-theme="dark"] .exam-sheet-topics,
+:root[data-theme="dark"] .paper-library-count,
+:root[data-theme="dark"] .study-card,
+:root[data-theme="dark"] .floating-chip,
+:root[data-theme="dark"] .practice-tag,
+:root[data-theme="dark"] .paper-picker-results,
+:root[data-theme="dark"] .paper-picker-results button,
+:root[data-theme="dark"] .mcq-picker-options,
+:root[data-theme="dark"] .mcq-picker-options button,
+:root[data-theme="dark"] .mcq-workspace-tabs button,
+:root[data-theme="dark"] .mcq-context-pinned > span,
+:root[data-theme="dark"] .mcq-saved-views select,
+:root[data-theme="dark"] .mcq-saved-views input,
+:root[data-theme="dark"] .mcq-density-control button,
+:root[data-theme="dark"] .mcq-preview-drawer,
+:root[data-theme="dark"] .mcq-new-paper-modal,
+:root[data-theme="dark"] .confirm-modal { background: #18231f; color: #e5eee9; border-color: #33443b; }
+:root[data-theme="dark"] .site-header,
+:root[data-theme="dark"] .closing-cta,
+:root[data-theme="dark"] .site-footer { border-color: #33443b; }
+:root[data-theme="dark"] .site-footer { background: #141f1a; }
+:root[data-theme="dark"] .practice-band,
+:root[data-theme="dark"] .topic-hero,
+:root[data-theme="dark"] .related-box,
+:root[data-theme="dark"] .quiz-aside,
+:root[data-theme="dark"] .result-summary,
+:root[data-theme="dark"] .paper-detail-heading,
+:root[data-theme="dark"] .exam-sheet-header,
+:root[data-theme="dark"] .overview-my-work,
+:root[data-theme="dark"] .category-topic-card,
+:root[data-theme="dark"] .paper-library-card,
+:root[data-theme="dark"] .paper-more-fields,
+:root[data-theme="dark"] .paper-question-builder,
+:root[data-theme="dark"] .paper-builder-rail,
+:root[data-theme="dark"] .mcq-live-preview,
+:root[data-theme="dark"] .permission-matrix,
+:root[data-theme="dark"] .paper-rail-head { background: #1c2b24; border-color: #34483d; }
+:root[data-theme="dark"] .admin-dashboard,
+:root[data-theme="dark"] body:has(.admin-page) { background: #101916; color: #e5eee9; }
+:root[data-theme="dark"] .admin-workspace-heading { background: #17221d; border-color: #33443b; }
+:root[data-theme="dark"] .admin-sidebar { background: #0b3026; }
+:root[data-theme="dark"] .admin-global-search { background: #202d27; border-color: #3a4b42; color: #b9c9c0; }
+:root[data-theme="dark"] .admin-global-search input { background: transparent; color: #e5eee9; }
+:root[data-theme="dark"] .admin-topbar-actions .button,
+:root[data-theme="dark"] .button-light,
+:root[data-theme="dark"] .button-secondary { background: #202d27; color: #dce9e2; border-color: #405248; }
+:root[data-theme="dark"] .admin-segment button.active,
+:root[data-theme="dark"] .admin-segment button[aria-selected="true"] { background: #25372e; color: #a5e2c0; }
+:root[data-theme="dark"] .admin-data-table thead,
+:root[data-theme="dark"] .mcq-bank-table th,
+:root[data-theme="dark"] .mcq-session-table th,
+:root[data-theme="dark"] .mcq-preview-table th { background: #202e27; }
+:root[data-theme="dark"] .mcq-bank-table td,
+:root[data-theme="dark"] .mcq-session-table td,
+:root[data-theme="dark"] .mcq-preview-table td,
+:root[data-theme="dark"] .admin-data-table td { color: #d2ded7; border-color: #33443b; }
+:root[data-theme="dark"] .mcq-bank-table tbody tr:hover,
+:root[data-theme="dark"] .admin-data-table tbody tr:hover { background: #223229; }
+:root[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]),
+:root[data-theme="dark"] select,
+:root[data-theme="dark"] textarea { background-color: #17231e; color: #e5eee9; border-color: #405248; }
+:root[data-theme="dark"] input::placeholder,
+:root[data-theme="dark"] textarea::placeholder { color: #91a49a; }
+:root[data-theme="dark"] option { background: #17231e; color: #e5eee9; }
+:root[data-theme="dark"] .main-nav a,
+:root[data-theme="dark"] .header-cta,
+:root[data-theme="dark"] .page-intro h1,
+:root[data-theme="dark"] .topic-hero h1,
+:root[data-theme="dark"] .paper-detail-heading h1,
+:root[data-theme="dark"] .quiz-page-heading h1,
+:root[data-theme="dark"] .section-heading h2,
+:root[data-theme="dark"] .related-box h2,
+:root[data-theme="dark"] .subject-card-copy strong,
+:root[data-theme="dark"] .topic-card strong,
+:root[data-theme="dark"] .paper-card strong,
+:root[data-theme="dark"] .account-auth-card h1,
+:root[data-theme="dark"] .account-heading h1,
+:root[data-theme="dark"] .practice-band h2,
+:root[data-theme="dark"] .practice-band h2 em,
+:root[data-theme="dark"] .exam-sheet-facts strong,
+:root[data-theme="dark"] .exam-sheet-topics > a,
+:root[data-theme="dark"] .exam-paper-card h2,
+:root[data-theme="dark"] .paper-library-card h3,
+:root[data-theme="dark"] .admin-section-intro h1,
+:root[data-theme="dark"] .admin-metric-card strong,
+:root[data-theme="dark"] .admin-panel-heading h3,
+:root[data-theme="dark"] .admin-panel h2,
+:root[data-theme="dark"] .admin-panel h3,
+:root[data-theme="dark"] .admin-panel h4,
+:root[data-theme="dark"] .confirm-modal h2 { color: #e5eee9; }
+:root[data-theme="dark"] .main-nav a:hover,
+:root[data-theme="dark"] .text-link,
+:root[data-theme="dark"] .brand-accent { color: #86d6aa; }
+:root[data-theme="dark"] .page-intro p,
+:root[data-theme="dark"] .topic-hero p,
+:root[data-theme="dark"] .paper-detail-heading p,
+:root[data-theme="dark"] .quiz-page-heading p,
+:root[data-theme="dark"] .subject-card-copy > span:nth-child(2),
+:root[data-theme="dark"] .topic-description,
+:root[data-theme="dark"] .topic-card-bottom,
+:root[data-theme="dark"] .paper-card p,
+:root[data-theme="dark"] .paper-card-footer,
+:root[data-theme="dark"] .footer-inner p,
+:root[data-theme="dark"] .footer-inner > span,
+:root[data-theme="dark"] .admin-section-intro p,
+:root[data-theme="dark"] .admin-panel p,
+:root[data-theme="dark"] .admin-panel label,
+:root[data-theme="dark"] .admin-panel small,
+:root[data-theme="dark"] .admin-panel th,
+:root[data-theme="dark"] .admin-panel td,
+:root[data-theme="dark"] .account-auth-card > p,
+:root[data-theme="dark"] .account-heading > div > p,
+:root[data-theme="dark"] .exam-paper-card p,
+:root[data-theme="dark"] .exam-sheet-header p,
+:root[data-theme="dark"] .exam-sheet-topics p,
+:root[data-theme="dark"] .exam-sheet-topics > a small { color: #a8b9b0; }
+:root[data-theme="dark"] .quiz-question h2,
+:root[data-theme="dark"] .review-list h3,
+:root[data-theme="dark"] .review-item h4,
+:root[data-theme="dark"] .review-item .review-answer,
+:root[data-theme="dark"] .quiz-aside h3,
+:root[data-theme="dark"] .aside-stat strong,
+:root[data-theme="dark"] .exam-paper-card h2,
+:root[data-theme="dark"] .topic-hero h1,
+:root[data-theme="dark"] .admin-record-title strong,
+:root[data-theme="dark"] .admin-card h2,
+:root[data-theme="dark"] .admin-login-card h2,
+:root[data-theme="dark"] .review-question-prompt,
+:root[data-theme="dark"] .permission-matrix-row,
+:root[data-theme="dark"] .paper-rail-head strong { color: #e5eee9; }
+:root[data-theme="dark"] .breadcrumbs,
+:root[data-theme="dark"] .preview-options,
+:root[data-theme="dark"] .quiz-progress-row,
+:root[data-theme="dark"] .timer,
+:root[data-theme="dark"] .quiz-aside p,
+:root[data-theme="dark"] .aside-stat,
+:root[data-theme="dark"] .review-item p,
+:root[data-theme="dark"] .review-heading,
+:root[data-theme="dark"] .admin-record p,
+:root[data-theme="dark"] .admin-record small,
+:root[data-theme="dark"] .admin-helper,
+:root[data-theme="dark"] .admin-empty,
+:root[data-theme="dark"] .activity-pagination,
+:root[data-theme="dark"] .paper-rail-head > span { color: #a8b9b0; }
+:root[data-theme="dark"] .quiz-question,
+:root[data-theme="dark"] .exam-sheet-facts li,
+:root[data-theme="dark"] .question-save-button,
+:root[data-theme="dark"] .paper-order-actions button,
+:root[data-theme="dark"] .mcq-context-field input,
+:root[data-theme="dark"] .mcq-context-field select,
+:root[data-theme="dark"] .mcq-picker > input,
+:root[data-theme="dark"] .mcq-session-table select,
+:root[data-theme="dark"] .mcq-bank-filters select,
+:root[data-theme="dark"] .mcq-bulk-control select,
+:root[data-theme="dark"] .paper-picker-filters select,
+:root[data-theme="dark"] .paper-picker-toolbar select,
+:root[data-theme="dark"] .admin-filter { background: #17231e; color: #e5eee9; border-color: #405248; }
+:root[data-theme="dark"] .preview-number,
+:root[data-theme="dark"] .topic-hero-meta span,
+:root[data-theme="dark"] .exam-paper-meta span,
+:root[data-theme="dark"] .exam-chip,
+:root[data-theme="dark"] .paper-badge,
+:root[data-theme="dark"] .official-badge { background: #24382d; color: #bde4c9; border-color: #3d5a49; }
+:root[data-theme="dark"] .progress-track,
+:root[data-theme="dark"] .study-progress { background: #34443b; }
+:root[data-theme="dark"] .related-box h2,
+:root[data-theme="dark"] .related-box p { color: #e5eee9; }
+:root[data-theme="dark"] .choice-option:hover,
+:root[data-theme="dark"] .mcq-option-card.is-correct,
+:root[data-theme="dark"] .review-choice-list li.is-correct { background: #1c3829; }
+:root[data-theme="dark"] .choice-option.selected { background: #243b2d; }
+:root[data-theme="dark"] .admin-nav-count { background: #cbe66c; color: #263626; }
+:root[data-theme="dark"] .admin-notice,
+:root[data-theme="dark"] .paper-notice,
+:root[data-theme="dark"] .paper-availability-note,
+:root[data-theme="dark"] .mcq-similar-warning,
+:root[data-theme="dark"] .mcq-edit-diff,
+:root[data-theme="dark"] .role-review-row p { background: #332d1d; border-color: #655333; color: #ead9a8; }
+:root[data-theme="dark"] .mcq-image-trigger,
+:root[data-theme="dark"] .mcq-image-frame,
+:root[data-theme="dark"] .mcq-image-fallback { background: #202d27; border-color: #3a4b42; }
+:root[data-theme="dark"] .theme-toggle { background: #202d27; border-color: #405248; color: #e5eee9; }
+
+.header-actions { display: flex; align-items: center; gap: 10px; }
+.theme-toggle { min-height: 38px; padding: 0 11px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid #dfe8db; border-radius: 9px; background: #fff; color: #315747; font: inherit; font-size: 12px; font-weight: 700; white-space: nowrap; cursor: pointer; }
+.theme-toggle:hover { border-color: #93b7a1; }
+.admin-topbar-actions .theme-toggle { min-height: 38px; padding: 0 11px; }
+@media (max-width: 680px) {
+  .header-actions { gap: 6px; }
+  .header-actions .theme-toggle { width: 36px; min-width: 36px; min-height: 36px; padding: 0; }
+  .header-actions .theme-toggle span { display: none; }
+  .header-actions .header-cta { padding-inline: 8px; }
+}
+@media (prefers-reduced-motion: reduce) { :root { scroll-behavior: auto; } }
 .exam-sheet-topics > a:hover { color: var(--green); }
 
 @media (max-width: 900px) {

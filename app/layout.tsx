@@ -4,6 +4,7 @@ import { SiteFooter, SiteHeader } from "@/components/SiteHeader";
 import { AppFeedback } from "@/components/AppFeedback";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+const themeBootstrap = `try{var theme=localStorage.getItem("mcqpath:theme");if(theme!=="dark"&&theme!=="light"){theme=window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"}document.documentElement.dataset.theme=theme;document.documentElement.style.colorScheme=theme}catch{document.documentElement.dataset.theme="light"}`;
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -29,7 +30,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head><script dangerouslySetInnerHTML={{ __html: themeBootstrap }} /></head>
       <body>
         <AppFeedback>
           <SiteHeader />
