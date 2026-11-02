@@ -1803,6 +1803,7 @@ body:has(.admin-page) { background: #f4f7f5; color: #1c332b; }
   font-family: "Noto Nastaliq Urdu", serif;
   line-height: 2.3;
 }
+.localized-text { unicode-bidi: isolate; }
 .localized-text-with-urdu { line-height: 2.3; }
 :lang(ur) input, :lang(ur) textarea, [lang="ur"] input, [lang="ur"] textarea {
   font-family: "Noto Nastaliq Urdu", serif;

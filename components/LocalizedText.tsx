@@ -13,7 +13,7 @@ export function LocalizedText({ children, className }: { children: ReactNode; cl
   const classes = ["localized-text", hasUrdu && "localized-text-with-urdu", className].filter(Boolean).join(" ");
 
   return (
-    <span className={classes} dir="auto">
+    <span className={classes} dir={hasUrdu ? "rtl" : "ltr"}>
       {parts.map((part, index) => URDU_RUN_TEST_RE.test(part)
         ? <span className="urdu-text" lang="ur" dir="rtl" key={index}>{part}</span>
         : part)}
