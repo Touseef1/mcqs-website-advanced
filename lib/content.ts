@@ -4,6 +4,7 @@ export type Question = {
   id: number;
   topicSlug: string;
   prompt: string;
+  language?: "en" | "ur";
   questionImageUrl?: string | null;
   choices: Choice[];
   correctChoice: string;

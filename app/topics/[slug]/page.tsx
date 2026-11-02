@@ -32,7 +32,7 @@ async function TopicContent({ params }: Props) {
         {questions.slice(0, 5).map((question, index) => (
           <article className="preview-question" key={question.id}>
             <span className="preview-number">{String(index + 1).padStart(2, "0")}</span>
-            <div><h3>{question.prompt}</h3>{question.questionImageUrl && <MCQImage src={question.questionImageUrl} alt="Question image" size="compact" />}<div className="preview-options">{question.choices.map((choice) => <span className="preview-option" key={choice.label}><b>{choice.label}</b> {choice.text}{choice.imageUrl && <MCQImage src={choice.imageUrl} alt={`Option ${choice.label} image`} size="compact" />}</span>)}</div></div>
+            <div><h3 lang={question.language ?? "en"} dir={question.language === "ur" ? "rtl" : "ltr"}>{question.prompt}</h3>{question.questionImageUrl && <MCQImage src={question.questionImageUrl} alt="Question image" size="compact" />}<div className="preview-options">{question.choices.map((choice) => <span className="preview-option" key={choice.label}><b>{choice.label}</b> <span lang={question.language ?? "en"} dir={question.language === "ur" ? "rtl" : "ltr"}>{choice.text}</span>{choice.imageUrl && <MCQImage src={choice.imageUrl} alt={`Option ${choice.label} image`} size="compact" />}</span>)}</div></div>
           </article>
         ))}
         {!questions.length && <p className="empty-inline">New questions for this topic will be added soon.</p>}
