@@ -1798,12 +1798,15 @@ body:has(.admin-page) { background: #f4f7f5; color: #1c332b; }
 :root[data-theme="dark"] .quiz-page-heading p,
 :root[data-theme="dark"] .footer-inner p { color: #a8b9b0; }
 
-/* Use Nastaliq only for Urdu content; English text keeps the site’s existing fonts. */
-:lang(ur), [lang="ur"], [lang^="ur-"], [dir="rtl"] {
+/* Urdu script is detected in each rendered text field, even on older rows with a wrong language value. */
+:lang(ur), [lang="ur"], [lang^="ur-"], .urdu-text {
   font-family: "Noto Nastaliq Urdu", serif;
-  line-height: 2.15;
+  line-height: 2.3;
 }
-:lang(ur) input, :lang(ur) textarea, [dir="rtl"] input, [dir="rtl"] textarea {
+.localized-text-with-urdu { line-height: 2.3; }
+:lang(ur) input, :lang(ur) textarea, [lang="ur"] input, [lang="ur"] textarea {
   font-family: "Noto Nastaliq Urdu", serif;
-  line-height: 2.15;
+  line-height: 2.3;
+  direction: rtl;
 }
+.urdu-aware-input { font-family: "Noto Nastaliq Urdu", serif; line-height: 2.3; direction: rtl; }

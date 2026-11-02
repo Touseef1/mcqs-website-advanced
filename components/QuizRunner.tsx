@@ -6,6 +6,7 @@ import type { PublicQuestion } from "@/lib/data";
 import { getErrorMessage, parseApiResponse } from "@/lib/error-message";
 import { notify } from "@/lib/toast";
 import { MCQImage } from "@/components/MCQImage";
+import { LocalizedText } from "@/components/LocalizedText";
 
 type QuizResult = {
   score: number;
@@ -122,13 +123,13 @@ export function QuizRunner({ questions, title, quizSlug, quizPath }: { questions
             return (
               <article className="review-item" key={question.id}>
                 <div className="review-heading"><span>QUESTION {String(index + 1).padStart(2, "0")}</span><b className={answer?.correct ? "status-correct" : "status-wrong"}>{answer?.correct ? "Correct" : answer ? "Review" : "Not answered"}</b></div>
-                <h4 lang={question.language ?? "en"} dir={question.language === "ur" ? "rtl" : "ltr"}>{question.prompt}</h4>
+                <h4><LocalizedText>{question.prompt}</LocalizedText></h4>
                 {question.questionImageUrl && <MCQImage src={question.questionImageUrl} alt="Question image" size="question" />}
                 <p className="question-source">Source: {question.sourceNote}</p>
                 <button className="question-save-button" onClick={() => void toggleBookmark(question.id)} disabled={savingId === question.id}>{savedIds.includes(question.id) ? "★ Saved question" : "☆ Save question"}</button>
                 <p className="review-answer">{answer?.selectedChoice ? `Your answer: ${answer.selectedChoice} · ` : "Not answered · "}Correct answer: {answer?.correctChoice}</p>
-                <ul className="review-choice-list">{question.choices.map((choice) => <li className={choice.label === answer?.correctChoice ? "is-correct" : choice.label === answer?.selectedChoice ? "is-selected" : ""} key={choice.label}><b>{choice.label}.</b>{choice.text && <span lang={question.language ?? "en"} dir={question.language === "ur" ? "rtl" : "ltr"}>{choice.text}</span>}{choice.imageUrl && <MCQImage src={choice.imageUrl} alt={`Option ${choice.label} image`} size="option" />}</li>)}</ul>
-                <p lang={question.language ?? "en"} dir={question.language === "ur" ? "rtl" : "ltr"}>{answer?.explanation ?? "You skipped this question. Review the correct answer and explanation."}</p>
+                <ul className="review-choice-list">{question.choices.map((choice) => <li className={choice.label === answer?.correctChoice ? "is-correct" : choice.label === answer?.selectedChoice ? "is-selected" : ""} key={choice.label}><b>{choice.label}.</b>{choice.text && <LocalizedText>{choice.text}</LocalizedText>}{choice.imageUrl && <MCQImage src={choice.imageUrl} alt={`Option ${choice.label} image`} size="option" />}</li>)}</ul>
+                <p><LocalizedText>{answer?.explanation ?? "You skipped this question. Review the correct answer and explanation."}</LocalizedText></p>
               </article>
             );
           })}
@@ -146,7 +147,7 @@ export function QuizRunner({ questions, title, quizSlug, quizPath }: { questions
           {questions.map((question, index) => (
             <article className="quiz-question" key={question.id}>
               <div className="question-number">QUESTION {String(index + 1).padStart(2, "0")} <span>{index + 1}/{questions.length}</span></div>
-              <h2 lang={question.language ?? "en"} dir={question.language === "ur" ? "rtl" : "ltr"}>{question.prompt}</h2>
+              <h2><LocalizedText>{question.prompt}</LocalizedText></h2>
               {question.questionImageUrl && <MCQImage src={question.questionImageUrl} alt="Question image" size="question" />}
               <p className="question-source">Source: {question.sourceNote}</p>
               <button className="question-save-button" onClick={() => void toggleBookmark(question.id)} disabled={savingId === question.id}>{savingId === question.id ? "Saving…" : savedIds.includes(question.id) ? "★ Saved question" : "☆ Save question"}</button>
@@ -156,7 +157,7 @@ export function QuizRunner({ questions, title, quizSlug, quizPath }: { questions
                   const selectChoice = () => setAnswers((current) => ({ ...current, [question.id]: choice.label }));
                   return <div className={answers[question.id] === choice.label ? "choice-option selected" : "choice-option"} key={choice.label} onClick={selectChoice}>
                     <input id={inputId} type="radio" name={`question-${question.id}`} value={choice.label} checked={answers[question.id] === choice.label} onChange={selectChoice} />
-                    <label className="choice-label" htmlFor={inputId}>{choice.label}</label><div className="choice-content">{choice.text && <label className="choice-text" lang={question.language ?? "en"} dir={question.language === "ur" ? "rtl" : "ltr"} htmlFor={inputId}>{choice.text}</label>}{choice.imageUrl && <MCQImage src={choice.imageUrl} alt={`Option ${choice.label} image`} size="option" onActivate={selectChoice} />}</div>
+                    <label className="choice-label" htmlFor={inputId}>{choice.label}</label><div className="choice-content">{choice.text && <label className="choice-text" htmlFor={inputId}><LocalizedText>{choice.text}</LocalizedText></label>}{choice.imageUrl && <MCQImage src={choice.imageUrl} alt={`Option ${choice.label} image`} size="option" onActivate={selectChoice} />}</div>
                   </div>;
                 })}
               </div>

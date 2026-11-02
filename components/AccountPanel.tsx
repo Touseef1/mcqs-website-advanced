@@ -7,6 +7,7 @@ import type { LearnerPrincipal } from "@/lib/learner-auth";
 import { getErrorMessage, parseApiResponse } from "@/lib/error-message";
 import { notify } from "@/lib/toast";
 import { MCQImage } from "@/components/MCQImage";
+import { LocalizedText } from "@/components/LocalizedText";
 
 type Progress = {
   summary: { attempts: number; averageScore: number; savedQuestions: number };
@@ -108,7 +109,7 @@ export function AccountPanel({ learner }: { learner: LearnerPrincipal | null }) 
       </section>
       {!!progress?.weakTopics?.length && <section className="account-section"><div className="account-section-heading"><div><span className="eyebrow">PERSONALIZED PRACTICE</span><h2>Topics to strengthen</h2></div></div><div className="account-attempt-list">{progress.weakTopics.map((topic) => <article key={topic.slug}><div><strong>{topic.subject_name} · {topic.topic_name}</strong><small>{topic.correct} correct out of {topic.attempted}</small></div><Link href={`/quiz/${encodeURIComponent(topic.slug)}`}>Practise topic</Link></article>)}</div></section>}
       <section className="account-section"><div className="account-section-heading"><div><span className="eyebrow">REVISIT ANYTIME</span><h2>Saved questions</h2></div></div>
-        {saved.length ? <div className="account-saved-list">{saved.map((question) => <article key={question.questionId}><div className="account-saved-content" lang={question.language ?? "en"} dir={question.language === "ur" ? "rtl" : "ltr"}><p>{question.prompt}</p>{question.questionImageUrl && <MCQImage src={question.questionImageUrl} alt="Question image" size="compact" />}{question.choices.map((choice) => <div className="account-saved-choice" key={choice.label}><b>{choice.label}.</b>{choice.text && <span>{choice.text}</span>}{choice.imageUrl && <MCQImage src={choice.imageUrl} alt={`Option ${choice.label} image`} size="compact" />}</div>)}</div><div className="account-saved-actions"><Link href={`/quiz/${encodeURIComponent(question.topicSlug)}`}>Open topic</Link><button onClick={() => void removeBookmark(question.questionId)}>Remove</button></div></article>)}</div> : <p className="account-empty">Save a question during a quiz and it will show up here.</p>}
+        {saved.length ? <div className="account-saved-list">{saved.map((question) => <article key={question.questionId}><div className="account-saved-content"><p><LocalizedText>{question.prompt}</LocalizedText></p>{question.questionImageUrl && <MCQImage src={question.questionImageUrl} alt="Question image" size="compact" />}{question.choices.map((choice) => <div className="account-saved-choice" key={choice.label}><b>{choice.label}.</b>{choice.text && <LocalizedText>{choice.text}</LocalizedText>}{choice.imageUrl && <MCQImage src={choice.imageUrl} alt={`Option ${choice.label} image`} size="compact" />}</div>)}</div><div className="account-saved-actions"><Link href={`/quiz/${encodeURIComponent(question.topicSlug)}`}>Open topic</Link><button onClick={() => void removeBookmark(question.questionId)}>Remove</button></div></article>)}</div> : <p className="account-empty">Save a question during a quiz and it will show up here.</p>}
       </section>
     </div>
   );
