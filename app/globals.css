@@ -222,7 +222,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .learner-pagination .is-disabled .learner-pagination-link { opacity: .45; cursor: not-allowed; }
 .learner-pagination-break .learner-pagination-link { border-color: transparent; background: transparent; cursor: default; }
 .learner-pagination-previous .learner-pagination-link,
-.learner-pagination-next .learner-pagination-link { padding-inline: 12px; }
+.learner-pagination-next .learner-pagination-link { min-width: 104px; min-height: 38px; gap: 8px; padding: 0 14px; border-color: #d5e3d5; border-radius: 999px; background: #f4f8f1; color: #355b40; white-space: nowrap; }
+.learner-pagination-previous .learner-pagination-link:hover,
+.learner-pagination-next .learner-pagination-link:hover { border-color: #8eae94; background: #e9f2e7; color: #244d35; }
+.learner-pagination .is-disabled .learner-pagination-link { border-color: #e5e9e3; background: #f7f8f6; color: #9ba49c; opacity: 1; }
+.learner-pagination-link:focus-visible { outline: 3px solid rgba(71,121,88,.28); outline-offset: 2px; }
+.learner-pagination-arrow { font-size: 16px; line-height: 1; }
 .revealed-answer { margin-top: 13px; padding: 11px 13px; border: 1px solid #b8d7b7; border-radius: 8px; background: #f1f8ed; color: #2b6241; }
 .revealed-answer strong { font-size: 12px; }
 .revealed-answer p { margin: 5px 0 0; color: #526b58; font-size: 12px; }
@@ -1738,6 +1743,11 @@ body:has(.admin-page) { background: #f4f7f5; color: #1c332b; }
 :root[data-theme="dark"] .answer-loading { color: #a8b9b0; }
 :root[data-theme="dark"] .learner-pagination-link { border-color: #405248; background: #17231e; color: #d5e2da; }
 :root[data-theme="dark"] .learner-pagination-link:hover { border-color: #70947a; background: #24382d; }
+:root[data-theme="dark"] .learner-pagination-previous .learner-pagination-link,
+:root[data-theme="dark"] .learner-pagination-next .learner-pagination-link { border-color: #4a6854; background: #203529; color: #c5e2cb; }
+:root[data-theme="dark"] .learner-pagination-previous .learner-pagination-link:hover,
+:root[data-theme="dark"] .learner-pagination-next .learner-pagination-link:hover { border-color: #7daa87; background: #2a4634; color: #e2f3e5; }
+:root[data-theme="dark"] .learner-pagination .is-disabled .learner-pagination-link { border-color: #34443b; background: #1a2520; color: #76877d; }
 :root[data-theme="dark"] .learner-pagination .is-active .learner-pagination-link { border-color: #6c9e74; background: #477958; color: #fff; }
 :root[data-theme="dark"] .learner-pagination-break .learner-pagination-link { border-color: transparent; background: transparent; }
 :root[data-theme="dark"] .question-explanation { color: #a8b9b0; }

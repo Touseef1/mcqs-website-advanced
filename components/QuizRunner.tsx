@@ -33,13 +33,13 @@ function LearnerPagination({ currentPage, pageCount, total, onChange }: { curren
     <p className="learner-pagination-summary">Questions {first}–{last} of {total} · Page {currentPage} of {pageCount}</p>
     <ReactPaginate
       breakLabel="…"
-      nextLabel="Next →"
+      nextLabel={<><span>Next</span><span className="learner-pagination-arrow" aria-hidden="true">→</span></>}
       onPageChange={({ selected }) => onChange(selected + 1)}
       pageRangeDisplayed={3}
       marginPagesDisplayed={1}
       pageCount={pageCount}
       forcePage={currentPage - 1}
-      previousLabel="← Previous"
+      previousLabel={<><span className="learner-pagination-arrow" aria-hidden="true">←</span><span>Previous</span></>}
       renderOnZeroPageCount={null}
       containerClassName="learner-pagination"
       pageClassName="learner-pagination-page"
