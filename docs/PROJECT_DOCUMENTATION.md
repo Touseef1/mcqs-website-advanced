@@ -65,6 +65,8 @@ The root layout (`app/layout.tsx`) provides the global metadata, header, footer,
 
 Topic and past-paper question sets use ten questions per page. Learners can switch between Read mode, which shows the answer, and Quiz mode, which marks the selected and correct choices after one locked choice per question. Explanations are collapsed under a “Show explanation” disclosure in both modes. Numbered pagination is provided by `react-paginate` and styled for light/dark themes and small screens.
 
+The learner account reports quiz scores using answered questions only, including for older attempts where skipped questions were stored as unanswered rows. Wrong answers are grouped by topic for retry, reading, and dismissal; dismissing a topic hides its missed questions without deleting attempt history. Subject performance cards show correct-answer percentages and expandable topic breakdowns based on all answered attempts.
+
 ### Admin workspace
 
 `/admin` is an authentication-gated workspace. It has an Inspinia-inspired vertical admin shell implemented with project CSS: a persistent left navigation on desktop, a top bar, role-specific menu items, and a focused workspace area. On mobile, the sidebar changes into a horizontally scrollable navigation row. The public header and footer are hidden on this route.

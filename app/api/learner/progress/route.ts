@@ -44,10 +44,62 @@ export async function GET() {
      HAVING COUNT(*) >= 2 AND SUM(qa.is_correct) / COUNT(*) < 0.6
       ORDER BY SUM(qa.is_correct) / COUNT(*) ASC, COUNT(*) DESC LIMIT 6`, [learner.id],
   );
+  const [performanceRows] = await db.execute<Array<RowDataPacket & {
+    subject_id: number;
+    subject_name: string;
+    topic_id: number;
+    topic_slug: string;
+    topic_name: string;
+    attempted: number;
+    correct: number;
+  }>>(
+    `SELECT s.id AS subject_id, s.name AS subject_name, t.id AS topic_id,
+            t.slug AS topic_slug, t.name AS topic_name, COUNT(*) AS attempted,
+            SUM(qa.is_correct) AS correct
+       FROM quiz_attempt_answers qa
+       JOIN topics t ON t.id = qa.topic_id
+       JOIN subjects s ON s.id = t.subject_id
+      WHERE qa.learner_id = ? AND qa.selected_choice IS NOT NULL
+      GROUP BY s.id, s.name, t.id, t.slug, t.name
+      ORDER BY s.name, t.name`, [learner.id],
+  );
+  const subjectPerformance = new Map<number, {
+    subjectId: number;
+    subjectName: string;
+    attempted: number;
+    correct: number;
+    topics: Array<{ id: number; slug: string; name: string; attempted: number; correct: number; percentage: number }>;
+  }>();
+  for (const row of performanceRows) {
+    const attempted = Number(row.attempted);
+    const correct = Number(row.correct);
+    const subject = subjectPerformance.get(row.subject_id) ?? {
+      subjectId: row.subject_id,
+      subjectName: row.subject_name,
+      attempted: 0,
+      correct: 0,
+      topics: [],
+    };
+    subject.attempted += attempted;
+    subject.correct += correct;
+    subject.topics.push({
+      id: row.topic_id,
+      slug: row.topic_slug,
+      name: row.topic_name,
+      attempted,
+      correct,
+      percentage: attempted ? Math.round((correct / attempted) * 100) : 0,
+    });
+    subjectPerformance.set(row.subject_id, subject);
+  }
   const summary = summaryRows[0];
   return NextResponse.json({
     summary: { attempts: Number(summary?.attempts ?? 0), averageScore: Number(summary?.average_score ?? 0), savedQuestions: Number(summary?.saved_count ?? 0) },
     attempts: attempts.map((attempt) => ({ ...attempt, completed_at: attempt.completed_at.toISOString() })),
     weakTopics: weakTopics.map((topic) => ({ ...topic, attempted: Number(topic.attempted), correct: Number(topic.correct) })),
+    subjectPerformance: [...subjectPerformance.values()].map((subject) => ({
+      ...subject,
+      percentage: subject.attempted ? Math.round((subject.correct / subject.attempted) * 100) : 0,
+    })),
   });
 }

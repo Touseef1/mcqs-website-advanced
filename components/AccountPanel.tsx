@@ -14,6 +14,14 @@ type Progress = {
   summary: { attempts: number; averageScore: number; savedQuestions: number };
   attempts: Array<{ id: number; quiz_title: string; quiz_path: string; score: number; question_count: number; completed_at: string }>;
   weakTopics?: Array<{ slug: string; topic_name: string; subject_name: string; attempted: number; correct: number }>;
+  subjectPerformance?: Array<{
+    subjectId: number;
+    subjectName: string;
+    attempted: number;
+    correct: number;
+    percentage: number;
+    topics: Array<{ id: number; slug: string; name: string; attempted: number; correct: number; percentage: number }>;
+  }>;
 };
 type SavedQuestion = { questionId: number; topicSlug: string; prompt: string; language?: "en" | "ur"; questionImageUrl?: string | null; choices: Array<{ label: string; text: string; imageUrl?: string | null }> };
 
@@ -108,6 +116,7 @@ export function AccountPanel({ learner }: { learner: LearnerPrincipal | null }) 
       <section className="account-section"><div className="account-section-heading"><div><span className="eyebrow">KEEP IMPROVING</span><h2>Recent practice</h2></div><Link href="/subjects">Find a quiz →</Link></div>
         {!progress ? <p className="account-empty">Loading your quiz history…</p> : progress.attempts.length ? <div className="account-attempt-list">{progress.attempts.map((attempt) => <article key={attempt.id}><div><strong>{attempt.quiz_title}</strong><small>{new Date(attempt.completed_at).toLocaleDateString()}</small></div><b>{attempt.score} out of {attempt.question_count}<small>{attempt.question_count ? Math.round(attempt.score / attempt.question_count * 100) : 0}%</small></b><Link href={attempt.quiz_path}>Practise again</Link></article>)}</div> : <p className="account-empty">Your completed quizzes will appear here. <Link href="/subjects">Start practising</Link></p>}
       </section>
+      {!!progress?.subjectPerformance?.length && <section className="account-section"><div className="account-section-heading"><div><span className="eyebrow">YOUR PROGRESS</span><h2>Subject performance</h2></div><span>Based on answered questions</span></div><div className="subject-performance-grid">{progress.subjectPerformance.map((subject) => <article className="subject-performance-card" key={subject.subjectId}><div className="subject-performance-heading"><div><h3>{subject.subjectName}</h3><small>{subject.correct} correct out of {subject.attempted}</small></div><strong>{subject.percentage}%</strong></div><div className="subject-performance-track" role="progressbar" aria-label={`${subject.subjectName} correct answer rate`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={subject.percentage}><span style={{ width: `${subject.percentage}%` }} /></div><details className="subject-topic-breakdown"><summary>Topic breakdown ({subject.topics.length})</summary><ul>{subject.topics.map((topic) => <li key={topic.id}><span>{topic.name}</span><b>{topic.correct}/{topic.attempted} · {topic.percentage}%</b></li>)}</ul></details></article>)}</div></section>}
       {!!progress?.weakTopics?.length && <section className="account-section"><div className="account-section-heading"><div><span className="eyebrow">PERSONALIZED PRACTICE</span><h2>Topics to strengthen</h2></div></div><div className="account-attempt-list">{progress.weakTopics.map((topic) => <article key={topic.slug}><div><strong>{topic.subject_name} · {topic.topic_name}</strong><small>{topic.correct} correct out of {topic.attempted}</small></div><Link href={`/quiz/${encodeURIComponent(topic.slug)}`}>Practise topic</Link></article>)}</div></section>}
       <WrongQuestionsPanel />
       <section className="account-section"><div className="account-section-heading"><div><span className="eyebrow">REVISIT ANYTIME</span><h2>Saved questions</h2></div></div>
