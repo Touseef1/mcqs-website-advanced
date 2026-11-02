@@ -1,10 +1,10 @@
 import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
-const COOKIE_NAME = "mcqpath_learner_captcha";
 const CAPTCHA_TTL_SECONDS = 5 * 60;
 
 type CaptchaPayload = { answer: string; expiresAt: number };
+const LEARNER_COOKIE_NAME = "mcqpath_learner_captcha";
 
 function secret() {
   const value = process.env.SESSION_SECRET;
@@ -16,38 +16,38 @@ function sign(payload: string) {
   return createHmac("sha256", secret()).update(payload).digest("base64url");
 }
 
-export function createLearnerCaptcha() {
+export function createNumericCaptcha() {
   const answer = String(randomInt(1000, 10000));
   const payload = Buffer.from(JSON.stringify({ answer, expiresAt: Date.now() + CAPTCHA_TTL_SECONDS * 1000 } satisfies CaptchaPayload)).toString("base64url");
   return { answer, token: `${payload}.${sign(payload)}` };
 }
 
-export function attachLearnerCaptchaCookie(response: NextResponse, token: string) {
-  response.cookies.set(COOKIE_NAME, token, {
+export function attachNumericCaptchaCookie(response: NextResponse, token: string, cookieName: string, path: string) {
+  response.cookies.set(cookieName, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "strict",
-    path: "/api/learner",
+    path,
     maxAge: CAPTCHA_TTL_SECONDS,
   });
   return response;
 }
 
-export function clearLearnerCaptchaCookie(response: NextResponse) {
-  response.cookies.set(COOKIE_NAME, "", {
+export function clearNumericCaptchaCookie(response: NextResponse, cookieName: string, path: string) {
+  response.cookies.set(cookieName, "", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "strict",
-    path: "/api/learner",
+    path,
     maxAge: 0,
   });
   return response;
 }
 
-export function verifyLearnerCaptcha(request: Request, answer: unknown) {
+export function verifyNumericCaptcha(request: Request, answer: unknown, cookieName: string) {
   if (typeof answer !== "string" || !/^\d{4}$/.test(answer)) return false;
   const cookieHeader = request.headers.get("cookie") ?? "";
-  const token = cookieHeader.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${COOKIE_NAME}=`))?.slice(COOKIE_NAME.length + 1);
+  const token = cookieHeader.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${cookieName}=`))?.slice(cookieName.length + 1);
   if (!token) return false;
   const [payload, signature] = decodeURIComponent(token).split(".");
   if (!payload || !signature) return false;
@@ -66,5 +66,16 @@ export function verifyLearnerCaptcha(request: Request, answer: unknown) {
   } catch {
     return false;
   }
+}
+
+export const createLearnerCaptcha = createNumericCaptcha;
+export function attachLearnerCaptchaCookie(response: NextResponse, token: string) {
+  return attachNumericCaptchaCookie(response, token, LEARNER_COOKIE_NAME, "/api/learner");
+}
+export function clearLearnerCaptchaCookie(response: NextResponse) {
+  return clearNumericCaptchaCookie(response, LEARNER_COOKIE_NAME, "/api/learner");
+}
+export function verifyLearnerCaptcha(request: Request, answer: unknown) {
+  return verifyNumericCaptcha(request, answer, LEARNER_COOKIE_NAME);
 }
 

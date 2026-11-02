@@ -242,7 +242,8 @@ All endpoints are Next.js Route Handlers under `app/api`. Admin endpoints requir
 
 | Endpoint | Methods | Main purpose |
 |---|---|---|
-| `/api/admin/login` | `POST` | Verify bootstrap or database admin credentials and issue an HTTP-only session cookie. |
+| `/api/admin/captcha` | `GET` | Issue a short-lived four-digit CAPTCHA for admin sign-in. |
+| `/api/admin/login` | `POST` | Validate CAPTCHA and verify bootstrap or database admin credentials, then issue an HTTP-only session cookie. |
 | `/api/admin/logout` | `POST` | Clear the admin session cookie. |
 | `/api/admin/activity-logs` | `GET` | Super Admin-only activity feed, filtered by staff member, action, and date range, with newest-first pagination, per-user totals, and last login. |
 | `/api/admin/questions` | `GET`, `POST`, `PATCH`, `DELETE` | List questions and options; create/update an MCQ and its paper links; publish or archive according to permission. |
