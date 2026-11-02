@@ -60,7 +60,6 @@ export function QuizRunner({ questions, title, quizSlug, quizPath, canBookmark =
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [revealedAnswers, setRevealedAnswers] = useState<Record<number, RevealedAnswer>>({});
   const [pendingAnswerIds, setPendingAnswerIds] = useState<number[]>([]);
-  const [openExplanations, setOpenExplanations] = useState<Record<number, boolean>>({});
   const [result, setResult] = useState<QuizResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -148,13 +147,8 @@ export function QuizRunner({ questions, title, quizSlug, quizPath, canBookmark =
     setAnswers({});
     setRevealedAnswers({});
     setPendingAnswerIds([]);
-    setOpenExplanations({});
     setError("");
     if (nextMode === "quiz") startedAt.current = Date.now();
-  }
-
-  function toggleExplanation(questionId: number) {
-    setOpenExplanations((current) => ({ ...current, [questionId]: !current[questionId] }));
   }
 
   async function submitQuiz() {
@@ -199,7 +193,7 @@ export function QuizRunner({ questions, title, quizSlug, quizPath, canBookmark =
           <span className="eyebrow">TEST COMPLETE</span>
           <h2>{result.score} <span>/ {questions.length}</span></h2>
           <p>You answered {result.total} questions. Review the answers and explanations below.</p>
-          <button className="button button-primary" onClick={() => { setAnswers({}); setResult(null); setCurrentPage(1); setMode("quiz"); setRevealedAnswers({}); setOpenExplanations({}); startedAt.current = Date.now(); }}>Try again</button>
+          <button className="button button-primary" onClick={() => { setAnswers({}); setResult(null); setCurrentPage(1); setMode("quiz"); setRevealedAnswers({}); startedAt.current = Date.now(); }}>Try again</button>
         </div>
         <div className="review-list">
           <h3>Answer review · questions {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, questions.length)}</h3>
@@ -214,10 +208,7 @@ export function QuizRunner({ questions, title, quizSlug, quizPath, canBookmark =
                 {canBookmark && <button className="question-save-button" onClick={() => void toggleBookmark(question.id)} disabled={savingId === question.id}>{savedIds.includes(question.id) ? "★ Saved question" : "☆ Save question"}</button>}
                 <p className="review-answer">{answer?.selectedChoice ? `Your answer: ${answer.selectedChoice} · ` : "Not answered · "}Correct answer: {answer?.correctChoice}</p>
                 <ul className="review-choice-list">{question.choices.map((choice) => <li className={choice.label === answer?.correctChoice ? "is-correct" : choice.label === answer?.selectedChoice ? "is-selected" : ""} key={choice.label}><b>{choice.label}.</b>{choice.text && <LocalizedText>{choice.text}</LocalizedText>}{choice.imageUrl && <MCQImage src={choice.imageUrl} alt={`Option ${choice.label} image`} size="option" />}</li>)}</ul>
-                {answer?.explanation && <div className="review-explanation">
-                  <button type="button" className="explanation-toggle" aria-expanded={Boolean(openExplanations[question.id])} onClick={() => toggleExplanation(question.id)}>{openExplanations[question.id] ? "Hide explanation" : "Explain more"}</button>
-                  {openExplanations[question.id] && <p><LocalizedText>{answer.explanation}</LocalizedText></p>}
-                </div>}
+                {(answer?.explanation || question.explanation) && <p className="question-explanation"><LocalizedText>{answer?.explanation || question.explanation}</LocalizedText></p>}
               </article>
             );
           })}
@@ -266,8 +257,9 @@ export function QuizRunner({ questions, title, quizSlug, quizPath, canBookmark =
                     </div>;
                   })}
                 </div>
-                {mode === "read" && (revealed ? <div className="revealed-answer" role="status"><strong>Correct answer: {revealed.correctChoice}</strong>{revealed.explanation && <div className="revealed-explanation"><button type="button" className="explanation-toggle" aria-expanded={Boolean(openExplanations[question.id])} onClick={() => toggleExplanation(question.id)}>{openExplanations[question.id] ? "Hide explanation" : "Explain more"}</button>{openExplanations[question.id] && <p><LocalizedText>{revealed.explanation}</LocalizedText></p>}</div>}</div> : <p className="answer-loading" role="status">{error ? "Answer could not be loaded. Refresh to try again." : "Loading answer…"}</p>)}
-                {mode === "quiz" && revealed && <div className="revealed-answer" role="status"><strong>{answers[question.id] === revealed.correctChoice ? `Correct answer: ${revealed.correctChoice}` : `Incorrect · Correct answer: ${revealed.correctChoice}`}</strong>{revealed.explanation && <div className="revealed-explanation"><button type="button" className="explanation-toggle" aria-expanded={Boolean(openExplanations[question.id])} onClick={() => toggleExplanation(question.id)}>{openExplanations[question.id] ? "Hide explanation" : "Explain more"}</button>{openExplanations[question.id] && <p><LocalizedText>{revealed.explanation}</LocalizedText></p>}</div>}</div>}
+                {mode === "read" && (revealed ? <div className="revealed-answer" role="status"><strong>Correct answer: {revealed.correctChoice}</strong></div> : <p className="answer-loading" role="status">{error ? "Answer could not be loaded. Refresh to try again." : "Loading answer…"}</p>)}
+                {mode === "quiz" && revealed && <span className="sr-only" role="status">Answer checked.</span>}
+                {question.explanation && <p className="question-explanation"><LocalizedText>{question.explanation}</LocalizedText></p>}
               </article>
             );
           })}

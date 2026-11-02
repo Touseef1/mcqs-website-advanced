@@ -226,10 +226,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .revealed-answer { margin-top: 13px; padding: 11px 13px; border: 1px solid #b8d7b7; border-radius: 8px; background: #f1f8ed; color: #2b6241; }
 .revealed-answer strong { font-size: 12px; }
 .revealed-answer p { margin: 5px 0 0; color: #526b58; font-size: 12px; }
-.revealed-explanation, .review-explanation { margin-top: 6px; }
-.explanation-toggle { padding: 3px 0; border: 0; background: transparent; color: #376b47; font-size: 11px; font-weight: 750; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
-.explanation-toggle:hover { color: #244d35; }
-.review-explanation p { margin: 6px 0 0; color: #526b58; font-size: 12px; line-height: 1.65; }
+.question-explanation { margin: 9px 0 0; color: #65756b; font-size: 11px; line-height: 1.55; }
 .answer-loading { margin: 10px 0 0; color: #738177; font-size: 11px; }
 .quiz-progress-row { display: flex; justify-content: space-between; align-items: center; color: #76867c; font-size: 10px; }
 .timer { color: #6d7b72; font-weight: 750; }
@@ -1709,13 +1706,13 @@ body:has(.admin-page) { background: #f4f7f5; color: #1c332b; }
 :root[data-theme="dark"] .learner-pagination-link:hover { border-color: #70947a; background: #24382d; }
 :root[data-theme="dark"] .learner-pagination .is-active .learner-pagination-link { border-color: #6c9e74; background: #477958; color: #fff; }
 :root[data-theme="dark"] .learner-pagination-break .learner-pagination-link { border-color: transparent; background: transparent; }
-:root[data-theme="dark"] .explanation-toggle { color: #a9d7b1; }
-:root[data-theme="dark"] .explanation-toggle:hover { color: #d3f0d7; }
-:root[data-theme="dark"] .review-explanation p { color: #a8c5af; }
+:root[data-theme="dark"] .question-explanation { color: #a8b9b0; }
 :root[data-theme="dark"] .revealed-answer { background: #1c3829; border-color: #42694d; color: #bde4c9; }
 :root[data-theme="dark"] .revealed-answer p { color: #a8c5af; }
 :root[data-theme="dark"] .choice-option.is-revealed-correct { background: #1c3829; border-color: #5b8d63; }
 :root[data-theme="dark"] .choice-option.is-revealed-wrong { background: #3a2725; border-color: #805147; }
+:root:not([data-theme=dark]) .choice-option.is-revealed-wrong,
+:root:not([data-theme=dark]) .choice-option.is-revealed-wrong.selected { background-color: #fff0ed; border-color: #cf6253; color: #71392f; }
 :root[data-theme="dark"] .admin-nav-count { background: #cbe66c; color: #263626; }
 :root[data-theme="dark"] .admin-notice,
 :root[data-theme="dark"] .paper-notice,

@@ -63,7 +63,7 @@ The root layout (`app/layout.tsx`) provides the global metadata, header, footer,
 | `/search` | Search | Search box and subject/topic/question results |
 | `/account` | Learner account | Sign-in/register, saved questions, quiz attempts, progress |
 
-Topic and past-paper question sets use ten questions per page. Learners can switch between Read mode, which shows the answer, and Quiz mode, which reveals feedback after one locked choice per question. Explanations remain collapsed behind “Explain more.” Numbered pagination is provided by `react-paginate` and styled for light/dark themes and small screens.
+Topic and past-paper question sets use ten questions per page. Learners can switch between Read mode, which shows the answer, and Quiz mode, which marks the selected and correct choices after one locked choice per question. Explanations are visible before answering in both modes. Numbered pagination is provided by `react-paginate` and styled for light/dark themes and small screens.
 
 ### Admin workspace
 
