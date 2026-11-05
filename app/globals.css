@@ -2307,3 +2307,89 @@ body:has(.admin-dashboard) { background: #f1f2f7; }
   .admin-topbar-actions .button > span { display: none; }
   .admin-topbar-actions .button { width: 36px; padding: 0; }
 }
+
+/* Focused record editor screens and the review queue table. */
+.admin-form-screen { display: grid; gap: 16px; width: 100%; max-width: 1360px; margin: 0 auto; }
+.admin-form-screen-heading { display: flex; align-items: center; gap: 20px; }
+.admin-form-screen-heading > .button { flex: 0 0 auto; }
+.admin-form-screen-heading > div { min-width: 0; }
+.admin-form-screen-heading h2 { margin: 3px 0 2px; color: #313a46; font-size: 23px; font-weight: 600; letter-spacing: -.025em; }
+.admin-form-screen-heading p { margin: 0; color: #8a969c; font-size: 13px; }
+.admin-form-page-panel { width: 100%; max-width: 980px; }
+.admin-form-page { display: grid; grid-template-columns: minmax(150px, .36fr) minmax(0, 1fr); align-items: center; gap: 12px 20px; }
+.admin-form-page > label { grid-column: 1; margin: 0; }
+.admin-form-page > input, .admin-form-page > select, .admin-form-page > textarea { grid-column: 2; width: 100%; }
+.admin-form-page > .permission-matrix, .admin-form-page > .form-hint, .admin-form-page > .form-success, .admin-form-page > .form-error, .admin-form-page > .admin-form-page-actions { grid-column: 1 / -1; }
+.admin-form-page-actions { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 12px; border-top: 1px solid #e7e9eb; }
+.admin-list-page { overflow: hidden; }
+.admin-list-page > .admin-panel-heading { padding: 18px 20px 14px; margin: 0; border-bottom: 1px solid #eef2f7; }
+.admin-list-page-actions { display: flex; align-items: center; gap: 8px; }
+.admin-list-page-actions .button, .admin-list-page > .admin-panel-heading > .button { min-height: 36px; display: inline-flex; align-items: center; gap: 7px; }
+.admin-list-toolbar { min-height: 57px; padding: 10px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px; color: #8a969c; font-size: 11px; }
+.admin-list-search { width: min(100%, 440px); min-height: 36px; padding: 0 10px; display: flex; align-items: center; gap: 8px; border: 1px solid #e7e9eb; border-radius: 5px; background: #fff; color: #8a969c; }
+.admin-list-search input { width: 100%; min-width: 0; padding: 7px 0; border: 0 !important; outline: 0; background: transparent !important; color: #313a46; font-size: 12px; }
+.admin-list-search input:focus { outline: 0; box-shadow: none; }
+.admin-list-search:focus-within { border-color: #1ab394; box-shadow: 0 0 0 3px rgba(26,179,148,.12); }
+.admin-paper-editor-page { max-width: none; }
+.admin-paper-editor-page .paper-builder-form { margin: 0; }
+.review-queue-panel { padding: 0; overflow: hidden; }
+.review-queue-heading { padding: 20px 22px 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.review-queue-heading h3 { margin: 3px 0; color: #313a46; font-size: 17px; font-weight: 600; }
+.review-queue-heading p { margin: 0; color: #8a969c; font-size: 12px; }
+.review-queue-count { min-width: 70px; padding: 7px 10px; border-radius: 4px; background: #e8f7f4; color: #159579; font-size: 11px; font-weight: 700; text-align: center; }
+.review-queue-table-wrap { max-height: min(44vh, 440px); border-top: 1px solid #e7e9eb; }
+.review-queue-table { min-width: 920px; }
+.review-queue-table .review-queue-prompt { max-width: 470px; display: -webkit-box; margin-top: 4px; overflow: hidden; color: #8a969c; font-size: 11px; line-height: 1.45; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.review-queue-table tbody tr { cursor: pointer; }
+.review-queue-table tbody tr.is-selected td { background: #e8f7f4; }
+.review-queue-table tbody tr.is-selected td:first-child { box-shadow: inset 3px 0 #1ab394; }
+.review-queue-table tbody tr.is-selected td strong { color: #159579; }
+.review-priority { display: inline-block; padding: 4px 8px; border-radius: 4px; background: #f6f7fb; color: #6c757d; font-size: 10px; font-weight: 700; white-space: nowrap; }
+.review-queue-table tbody tr:first-child .review-priority { background: #fff4e5; color: #bd720f; }
+.review-queue-table .button { min-height: 30px; padding: 0 10px; font-size: 11px; }
+.review-detail-layout { padding: 18px; display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(280px, .7fr); gap: 15px; border-top: 1px solid #e7e9eb; background: #f9fafc; }
+.review-detail-card, .review-decision-card { min-width: 0; padding: 18px; border: 1px solid #e7e9eb; border-radius: 5px; background: #fff; }
+.review-detail-card .admin-panel-heading { margin-bottom: 11px; }
+.review-detail-card .admin-panel-heading h3, .review-decision-card h3 { margin: 2px 0 6px; color: #313a46; font-size: 16px; font-weight: 600; }
+.review-question-prompt { margin: 0 0 13px; color: #313a46; font-size: 15px; font-weight: 600; line-height: 1.6; }
+.review-detail-card > img { display: block; max-width: 100%; max-height: 300px; margin: 0 0 13px; object-fit: contain; }
+.review-detail-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.review-detail-options .review-choice { min-width: 0; padding: 9px 10px; border: 1px solid #eef2f7; border-radius: 4px; background: #fbfcfd; }
+.review-detail-options .review-choice img { display: block; max-width: 100%; max-height: 150px; margin-top: 7px; object-fit: contain; }
+.review-question-meta { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 13px; }
+.review-question-meta span { padding: 4px 7px; border-radius: 4px; background: #f6f7fb; color: #6c757d; font-size: 10px; }
+.review-detail-card details { margin-top: 12px; color: #6c757d; font-size: 12px; }
+.review-decision-card { align-self: start; }
+.review-decision-card > p { color: #8a969c; font-size: 12px; line-height: 1.55; }
+.review-decision-card > label { display: block; margin: 12px 0 6px; color: #6c757d; font-size: 11px; font-weight: 650; }
+.review-decision-card textarea { width: 100%; min-height: 112px; resize: vertical; }
+.review-decision-actions { display: grid; gap: 8px; margin-top: 11px; }
+.review-decision-card > small { display: block; margin-top: 12px; color: #8a969c; font-size: 10px; line-height: 1.5; }
+:root[data-theme="dark"] .admin-form-screen-heading h2, :root[data-theme="dark"] .review-queue-heading h3, :root[data-theme="dark"] .review-detail-card .admin-panel-heading h3, :root[data-theme="dark"] .review-decision-card h3, :root[data-theme="dark"] .review-question-prompt { color: #e7e9eb; }
+:root[data-theme="dark"] .admin-form-screen-heading p, :root[data-theme="dark"] .admin-list-toolbar, :root[data-theme="dark"] .review-queue-heading p, :root[data-theme="dark"] .review-queue-table .review-queue-prompt, :root[data-theme="dark"] .review-decision-card > p, :root[data-theme="dark"] .review-decision-card > small { color: #a1a9b1; }
+:root[data-theme="dark"] .admin-form-page-actions, :root[data-theme="dark"] .admin-list-page > .admin-panel-heading, :root[data-theme="dark"] .review-queue-table-wrap, :root[data-theme="dark"] .review-detail-layout { border-color: #3b3d49; }
+:root[data-theme="dark"] .admin-list-search, :root[data-theme="dark"] .review-detail-card, :root[data-theme="dark"] .review-decision-card { border-color: #3b3d49; background: #2d2e3c; color: #ced4da; }
+:root[data-theme="dark"] .admin-list-search input { color: #e7e9eb; }
+:root[data-theme="dark"] .review-queue-count { background: #243f3b; color: #62d5b7; }
+:root[data-theme="dark"] .review-queue-table tbody tr.is-selected td { background: #243f3b; }
+:root[data-theme="dark"] .review-queue-table tbody tr.is-selected td strong { color: #62d5b7; }
+:root[data-theme="dark"] .review-priority { background: #343543; color: #ced4da; }
+:root[data-theme="dark"] .review-queue-table tbody tr:first-child .review-priority { background: #493a2a; color: #f5bd73; }
+:root[data-theme="dark"] .review-detail-layout { background: #252630; }
+:root[data-theme="dark"] .review-detail-options .review-choice { border-color: #3b3d49; background: #252630; }
+:root[data-theme="dark"] .review-question-meta span { background: #252630; color: #ced4da; }
+:root[data-theme="dark"] .review-detail-card details { color: #ced4da; }
+@media (max-width: 760px) {
+  .admin-form-screen-heading { align-items: flex-start; flex-direction: column; gap: 10px; }
+  .admin-form-page { grid-template-columns: minmax(0,1fr); gap: 8px; }
+  .admin-form-page > label, .admin-form-page > input, .admin-form-page > select, .admin-form-page > textarea { grid-column: 1; }
+  .admin-form-page > .permission-matrix, .admin-form-page > .form-hint, .admin-form-page > .form-success, .admin-form-page > .form-error, .admin-form-page > .admin-form-page-actions { grid-column: 1; }
+  .admin-list-toolbar { align-items: stretch; flex-direction: column; }
+  .admin-list-search { width: 100%; }
+  .review-detail-layout { grid-template-columns: 1fr; padding: 11px; }
+}
+@media (max-width: 520px) {
+  .admin-list-page > .admin-panel-heading { align-items: flex-start; flex-direction: column; }
+  .review-queue-heading { align-items: flex-start; }
+  .review-detail-options { grid-template-columns: 1fr; }
+}
