@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { LogOut } from "lucide-react";
 import { getErrorMessage, parseApiResponse } from "@/lib/error-message";
 import { notify } from "@/lib/toast";
 
@@ -13,5 +14,5 @@ export function AdminSignOutButton() {
       router.refresh();
     } catch (cause) { notify.error(getErrorMessage(cause, "Could not sign out.")); }
   }
-  return <button className="button button-secondary" onClick={() => void signOut()}>Sign out</button>;
+  return <button className="button button-secondary" onClick={() => void signOut()}><LogOut size={15} aria-hidden="true" /><span>Sign out</span></button>;
 }

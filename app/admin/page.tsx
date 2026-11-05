@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { AdminDashboard } from "@/components/AdminDashboard";
 import { AdminLoginForm } from "@/components/AdminLoginForm";
 import { AdminPasswordChange } from "@/components/AdminPasswordChange";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { adminLoginConfigured, getAdminCapabilities, getAdminPrincipal } from "@/lib/admin-auth";
 import { hasDatabase } from "@/lib/db";
 
@@ -20,7 +21,7 @@ async function AdminPanel() {
       {!adminLoginConfigured() ? (
         <div className="admin-notice"><strong>Admin setup is required</strong><p>Copy <code>.env.example</code> to <code>.env.local</code>, set a private <code>ADMIN_PASSWORD</code>, a private <code>ADMIN_EMAIL</code>, and a long random <code>SESSION_SECRET</code>, then restart the server.</p></div>
       ) : !principal ? (
-        <div className="admin-auth-shell">
+        <><ThemeToggle className="admin-login-theme-toggle" /><div className="admin-auth-shell">
           <aside className="admin-auth-story">
             <Link href="/" className="admin-brand admin-auth-brand"><span className="admin-brand-mark">M</span><span><strong>MCQPath</strong><small>ADMIN WORKSPACE</small></span></Link>
             <span className="admin-auth-kicker">STAFF PORTAL</span>
@@ -30,7 +31,7 @@ async function AdminPanel() {
             <div className="admin-auth-footer"><LockKeyhole size={15} aria-hidden="true" />Private access for authorized staff</div>
           </aside>
           <section className="admin-card admin-login-card admin-login-panel"><span className="eyebrow">ADMIN SIGN IN</span><h2>Welcome back</h2><p>Sign in with your staff account to continue.</p><AdminLoginForm /><Link className="admin-login-home" href="/">Return to MCQPath</Link></section>
-        </div>
+        </div></>
       ) : principal.mustChangePassword ? (
         <AdminPasswordChange required />
       ) : !hasDatabase ? (

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { Pencil } from "lucide-react";
 
 type Exam = { id: number; name: string; slug: string };
 
@@ -28,7 +29,7 @@ export function AdminExams({ exams, onSave }: { exams: Exam[]; onSave: (body: un
       </form>
     </section>
     <section className="admin-panel"><div className="admin-panel-heading"><div><span className="eyebrow">AVAILABLE EXAMS</span><h3>{exams.length} exams</h3></div></div>
-      <div className="admin-record-list admin-exam-list">{exams.map((exam) => <article className="admin-record" key={exam.id}><div><div className="admin-record-title"><strong>{exam.name}</strong></div><small>/{exam.slug}</small></div><button type="button" className="button button-light" onClick={() => edit(exam)}>Edit</button></article>)}{!exams.length && <p className="admin-empty">No exams yet. Add the exam body before creating its papers.</p>}</div>
+      <div className="admin-table-wrap admin-management-table-wrap"><table className="table table-hover align-middle admin-data-table admin-management-table"><thead><tr><th>Exam body</th><th>URL slug</th><th className="admin-actions-column">Actions</th></tr></thead><tbody>{exams.map((exam) => <tr key={exam.id}><td><strong>{exam.name}</strong></td><td>/{exam.slug}</td><td><div className="admin-table-actions"><button type="button" className="button button-light" onClick={() => edit(exam)}><Pencil size={14} /><span>Edit</span></button></div></td></tr>)}{!exams.length && <tr><td colSpan={3} className="admin-table-empty">No exams yet. Add the exam body before creating its papers.</td></tr>}</tbody></table></div>
     </section>
   </div>;
 }
