@@ -2871,3 +2871,6 @@ body:has(.admin-dashboard) { background: #f1f2f7; }
   .review-master-detail .review-detail-body { gap: 10px; padding: 11px; }
   .review-master-detail .review-details-sidebar { padding: 9px 0 0; }
 }
+
+/* The form heading uses a square icon-only back button; its span must not occupy a grid cell. */
+.admin-form-screen-heading > .button > span { display: none; }
