@@ -493,18 +493,8 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
     setShowQuestionImage(Boolean(question.questionImageUrl));
     setOpenChoiceImages(questionLabels.map((label) => Boolean(question.choices.find((choice) => choice.label === label)?.imageUrl)));
     if (canUsePapers && question.paperIds[0]) setPaperId(String(question.paperIds[0]));
+    setMode("quick");
     window.setTimeout(() => questionRef.current?.focus(), 50);
-  }
-
-  function cancelEdit() {
-    setEditingId(null);
-    setEditBaseline(null);
-    setEditingPaperIds([]);
-    setDraft(emptyDraft);
-    setShowQuestionImage(false);
-    setOpenChoiceImages([false, false, false, false]);
-    setSimilar([]);
-    setError("");
   }
 
   function replaceQuestion(id: number, patch: Partial<Question>) {
@@ -658,18 +648,15 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
   </section>;
 
   return <div className="admin-content-stack mcq-workspace">
-    {canCreateMcqs && (mode === "quick" || mode === "bulk") && !editingId && <div className="mcq-entry-page-heading"><div><h1>{mode === "quick" ? "Add MCQ" : "Paste multiple MCQs"}</h1><p>{mode === "quick" ? "Set the context once, then keep adding. Ctrl + Enter saves and continues." : "Paste question blocks or upload a CSV, then review every row before importing."}</p></div><div className="mcq-entry-heading-actions">{mode === "quick" && <span className="mcq-session-counter">{sessionCount} added this session</span>}{mode === "quick" ? <button type="button" className="button button-light" onClick={() => setMode("bulk")}>Paste multiple MCQs</button> : <button type="button" className="button button-light" onClick={() => setMode("quick")}>Back to Add MCQ</button>}</div></div>}
-    {canCreateMcqs && (mode === "quick" || mode === "bulk") && !editingId && contextBar}
+    {canCreateMcqs && (mode === "quick" || mode === "bulk") && <div className="mcq-entry-page-heading"><div><h1>{mode === "quick" ? (editingId ? `Edit MCQ #${editingId}` : "Add MCQ") : "Paste multiple MCQs"}</h1><p>{mode === "quick" ? "Set the context once, then keep adding. Ctrl + Enter saves and continues." : "Paste question blocks or upload a CSV, then review every row before importing."}</p></div><div className="mcq-entry-heading-actions">{mode === "quick" && <span className="mcq-session-counter">{sessionCount} added this session</span>}{mode === "quick" ? <button type="button" className="button button-light" onClick={() => setMode("bulk")}>Paste multiple MCQs</button> : <button type="button" className="button button-light" onClick={() => setMode("quick")}>Back to Add MCQ</button>}</div></div>}
+    {canCreateMcqs && (mode === "quick" || mode === "bulk") && contextBar}
     {mode === "bank" && <div className="admin-segment mcq-workspace-tabs" role="tablist" aria-label="MCQ tools">
       <button type="button" role="tab" aria-selected="true" className="active">MCQ bank</button>
     </div>}
     {error && <p className="form-error" role="alert">{error}</p>}
 
-    {(mode === "quick" || editingId !== null) && canCreateMcqs && <div className={editingId ? "mcq-edit-modal-backdrop" : undefined} role={editingId ? "presentation" : undefined} onMouseDown={editingId ? (event) => { if (event.target === event.currentTarget && !busy && !imageBusy) cancelEdit(); } : undefined}>
-      <section className={editingId ? "mcq-edit-modal" : "mcq-quick-editor"} role={editingId ? "dialog" : undefined} aria-modal={editingId ? "true" : undefined} aria-labelledby={editingId ? "mcq-edit-modal-title" : undefined}>
-        {editingId && <header className="mcq-edit-modal-header"><div><span className="eyebrow">EDIT MCQ</span><h2 id="mcq-edit-modal-title">MCQ #{editingId}</h2><p>Update the question, category, paper, and answer details.</p></div><button type="button" className="button button-light" disabled={busy || imageBusy} onClick={cancelEdit}>Close</button></header>}
-        {editingId && contextBar}
-        <section className="admin-panel mcq-entry-panel">
+    {mode === "quick" && canCreateMcqs && <>
+      <section className="mcq-entry-panel">
         <div className="mcq-entry-layout"><form className="admin-form mcq-entry-form" onSubmit={(event) => { event.preventDefault(); void saveQuestion(false); }} onKeyDown={onQuestionKeyDown}>
           <label htmlFor="fast-mcq-question">Question text</label>
           <textarea ref={questionRef} id="fast-mcq-question" lang={containsUrduScript(draft.prompt) ? "ur" : "en"} dir="auto" className={containsUrduScript(draft.prompt) ? "urdu-aware-input" : undefined} value={draft.prompt} onChange={(event) => setDraft((current) => { const prompt = event.target.value; return { ...current, prompt, language: detectQuestionLanguage([prompt, ...current.choices, current.explanation]) }; })} rows={3} minLength={8} maxLength={1500} required placeholder="Enter the question" />
@@ -680,14 +667,13 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
           <label htmlFor="fast-mcq-explanation">Explanation <span className="mcq-optional">optional</span></label>
           <textarea id="fast-mcq-explanation" lang={containsUrduScript(draft.explanation) ? "ur" : "en"} dir="auto" className={containsUrduScript(draft.explanation) ? "urdu-aware-input" : undefined} value={draft.explanation} onChange={(event) => setDraft((current) => { const explanation = event.target.value; return { ...current, explanation, language: detectQuestionLanguage([current.prompt, ...current.choices, explanation]) }; })} rows={2} maxLength={3000} placeholder="Explain the answer if useful" />
           {editBaseline && editingStatus === "published" && <section className="mcq-edit-diff" aria-label="Before and after edit comparison"><div><span className="eyebrow">EDIT REVIEW</span><strong>Before / after</strong><small>This published MCQ will return to review when saved.</small></div><div className="mcq-diff-columns"><article><b>Before</b><p><LocalizedText>{editBaseline.prompt}</LocalizedText></p><ol>{editBaseline.choices.map((choice) => <li key={choice.label}>{choice.label}) <LocalizedText>{choice.text}</LocalizedText></li>)}</ol><small>Answer: {editBaseline.correctChoice}</small></article><article><b>After</b><p><LocalizedText>{draft.prompt || "Question text not entered"}</LocalizedText></p><ol>{draft.choices.map((choice, index) => <li key={questionLabels[index]}>{questionLabels[index]}) <LocalizedText>{choice || "Empty option"}</LocalizedText></li>)}</ol><small>Answer: {draft.correctChoice || "Not selected"}</small></article></div></section>}
-          <div className="mcq-save-bar"><button className="button button-primary" type="submit" disabled={busy || imageBusy}>{busy ? "Saving…" : editingId ? "Save changes" : <>Save and add next <span>· Ctrl+Enter</span></>}</button><button className="button button-light" type="button" disabled={busy || imageBusy} onClick={() => void saveQuestion(true)}>Save and close</button>{editingId && <button className="button button-light" type="button" disabled={busy || imageBusy} onClick={cancelEdit}>Cancel edit</button>}<span className="mcq-save-hint">Saved as a draft. Send it to review from the MCQ bank.</span></div>
+          <div className="mcq-save-bar"><button className="button button-primary" type="submit" disabled={busy || imageBusy}>{busy ? "Saving…" : editingId ? "Save changes" : <>Save and add next <span>· Ctrl+Enter</span></>}</button><button className="button button-light" type="button" disabled={busy || imageBusy} onClick={() => void saveQuestion(true)}>Save and close</button>{editingId && <button className="button button-light" type="button" disabled={busy || imageBusy} onClick={() => { setEditingId(null); setEditingPaperIds([]); setDraft(emptyDraft); setShowQuestionImage(false); setOpenChoiceImages([false, false, false, false]); }}>Cancel edit</button>}<span className="mcq-save-hint">Saved as a draft. Send it to review from the MCQ bank.</span></div>
           {canCreateMcqs && <p className="form-hint">{canDirectPublish ? "Saving keeps the MCQ as a draft. You can publish it directly when its subject and topic are published, or send it through review." : "Saving keeps the MCQ as a draft. It stays off the public site until you submit it, a reviewer approves it, and someone with publish permission publishes it. The subject and topic must already be published."}</p>}
         </form><div className="mcq-entry-preview-column"><aside className="mcq-live-preview" aria-label="Learner view preview"><div className="mcq-live-preview-head"><strong>Learner view</strong><span>{draft.language === "ur" ? "اردو · RTL" : "English · LTR"}</span></div><article><p><LocalizedText>{draft.prompt || "Your question preview will appear here."}</LocalizedText></p>{draft.questionImageUrl && <Image src={draft.questionImageUrl} alt="Question preview" width={640} height={360} unoptimized />}{draft.choices.map((choice, index) => <div key={questionLabels[index]} className={draft.correctChoice === questionLabels[index] ? "is-preview-answer" : ""}><b>{questionLabels[index]}</b><LocalizedText>{choice || `Option ${questionLabels[index]}`}</LocalizedText>{draft.choiceImageUrls?.[index] && <Image src={draft.choiceImageUrls[index] ?? ""} alt={`Option ${questionLabels[index]} preview`} width={480} height={260} unoptimized />}</div>)}<small>The answer key stays hidden until the learner submits.</small></article></aside>
-          {!editingId && <SessionList questions={sessionQuestions} topics={topics} papers={paperOptions} selectedPaperId={paperId ? Number(paperId) : null} canManagePapers={canManagePapers} canPublish={canPublish} canDirectPublish={canDirectPublish} canDelete={canDelete} canReviewMcqs={canReviewMcqs} canCreateMcqs={canCreateMcqs} canEditOwnMcqs={canEditOwnMcqs} canEditAnyMcqs={canEditAnyMcqs} currentUserId={currentUserId} onEdit={editQuestion} onAction={sessionAction} />}
+          <SessionList questions={sessionQuestions} topics={topics} papers={paperOptions} selectedPaperId={paperId ? Number(paperId) : null} canManagePapers={canManagePapers} canPublish={canPublish} canDirectPublish={canDirectPublish} canDelete={canDelete} canReviewMcqs={canReviewMcqs} canCreateMcqs={canCreateMcqs} canEditOwnMcqs={canEditOwnMcqs} canEditAnyMcqs={canEditAnyMcqs} currentUserId={currentUserId} onEdit={editQuestion} onAction={sessionAction} />
         </div></div>
       </section>
-      </section>
-    </div>}
+    </>}
 
     {mode === "bulk" && canCreateMcqs && <section className="admin-panel mcq-bulk-panel">
       <div className="admin-panel-heading"><div><span className="eyebrow">BULK ENTRY</span><h3>Paste multiple MCQs or upload a CSV</h3><p>Paste blank-line-separated question blocks, or use CSV columns: question, A, B, C, D, answer, explanation.</p></div></div>

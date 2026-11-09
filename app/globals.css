@@ -1392,23 +1392,6 @@ body:has(.admin-page) { background: #f3f7f4; }
 .mcq-context-bar-compact .mcq-context-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 10px; width: 100%; margin: 0; }
 .mcq-entry-panel { padding: 0; overflow: hidden; border: 0; border-radius: 12px; background: transparent; box-shadow: none; }
 .mcq-entry-layout { grid-template-columns: minmax(0,1.25fr) minmax(300px,.75fr); gap: 16px; }
-.mcq-quick-editor { min-width: 0; }
-.mcq-edit-modal-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 24px; background: rgba(15, 23, 33, .58); backdrop-filter: blur(3px); }
-.mcq-edit-modal { display: grid; gap: 14px; width: min(1180px, 100%); max-height: calc(100vh - 48px); padding: 20px; overflow: auto; border: 1px solid #dfe5ed; border-radius: 16px; background: #f3f6f8; box-shadow: 0 28px 90px rgba(15, 23, 33, .32); }
-.mcq-edit-modal-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.mcq-edit-modal-header h2 { margin: 2px 0 3px; color: #202936; font-size: 21px; }
-.mcq-edit-modal-header p { margin: 0; color: #657287; font-size: 13px; }
-.mcq-edit-modal > .mcq-context-bar { position: static; margin: 0; }
-.mcq-edit-modal > .mcq-entry-panel { min-width: 0; }
-.mcq-edit-modal .mcq-entry-form { max-height: none; }
-.mcq-edit-modal .mcq-entry-preview-column { top: 10px; }
-:root[data-theme="dark"] .mcq-edit-modal { border-color: #414553; background: #1e2029; }
-:root[data-theme="dark"] .mcq-edit-modal-header h2 { color: #f1f3f5; }
-:root[data-theme="dark"] .mcq-edit-modal-header p { color: #abb3c0; }
-@media (max-width: 850px) {
-  .mcq-edit-modal-backdrop { padding: 10px; }
-  .mcq-edit-modal { max-height: calc(100vh - 20px); padding: 14px; }
-}
 .mcq-entry-form { min-width: 0; padding: 24px; border: 1px solid #dfe5ed; border-radius: 12px; background: #fff; }
 .mcq-entry-form > label { margin-top: 12px; color: #253142; font-size: 13px; font-weight: 650; }
 .mcq-entry-form > label:first-child { margin-top: 0; }
