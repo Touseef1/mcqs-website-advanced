@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import ReactPaginate from "react-paginate";
-import { ArrowLeft, Pencil, Plus, Search, UserRoundX } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, LockKeyhole, Mail, Pencil, Plus, Search, ShieldCheck, UserRound, UserRoundPlus, UserRoundX } from "lucide-react";
+import { AdminFormCardHeader } from "@/components/AdminFormCardHeader";
 import { useConfirmModal } from "@/components/ConfirmModal";
 import { getErrorMessage, parseApiResponse } from "@/lib/error-message";
 import { notify } from "@/lib/toast";
@@ -33,6 +34,7 @@ export function AdminLearners() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState<LearnerForm | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const requestVersion = useRef(0);
 
@@ -62,9 +64,10 @@ export function AdminLearners() {
     return () => window.clearTimeout(timer);
   }, [load]);
 
-  function startCreate() { setError(""); setForm(blankForm()); }
+  function startCreate() { setError(""); setShowPassword(false); setForm(blankForm()); }
   function startEdit(learner: Learner) {
     setError("");
+    setShowPassword(false);
     setForm({ id: learner.id, name: learner.name, email: learner.email, password: "", status: learner.status });
   }
 
@@ -114,15 +117,17 @@ export function AdminLearners() {
   }
 
   if (form) return <div className="admin-form-screen learner-form-screen">
-    <div className="admin-form-screen-heading"><button type="button" className="button button-light" disabled={busy} onClick={() => setForm(null)}><ArrowLeft size={15} />Back to learners</button><div><span className="eyebrow">LEARNER ACCOUNTS</span><h2>{form.id ? `Edit learner #${form.id}` : "Add learner account"}</h2><p>Update the learner’s name and email, or set a new password.</p></div></div>
-    <section className="admin-panel admin-form-page-panel"><form className="admin-form admin-form-page learner-account-form" onSubmit={(event) => void submit(event)}>
-      <label htmlFor="learner-name">Full name</label><input id="learner-name" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} minLength={2} maxLength={140} required />
-      <label htmlFor="learner-email">Email</label><input id="learner-email" type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} maxLength={190} required />
-      <label htmlFor="learner-password">{form.id ? "New password (leave blank to keep current)" : "Password"}</label><input id="learner-password" type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} minLength={8} maxLength={128} autoComplete="new-password" required={!form.id} />
+    <nav className="admin-form-breadcrumb" aria-label="Breadcrumb"><span>Learners</span><b>›</b><strong>{form.id ? "Edit learner" : "Add learner"}</strong></nav>
+    <div className="admin-form-screen-heading"><button type="button" className="button button-light" aria-label="Back to learners" title="Back to learners" disabled={busy} onClick={() => setForm(null)}><ArrowLeft size={17} /><span>Back to learners</span></button><div><h2>{form.id ? `Edit learner #${form.id}` : "Add learner account"}</h2><p>{form.id ? "Update the learner’s name and email, or set a new password." : "Create a new learner with a name, email and starting password."}</p></div></div>
+    <section className="admin-panel admin-form-page-panel learner-form-card"><AdminFormCardHeader icon={UserRoundPlus} title="Account details" description="The learner can sign in with these details right away." /><form className="admin-form admin-form-page learner-account-form" onSubmit={(event) => void submit(event)}>
+      <label htmlFor="learner-name">Full name</label><div className="admin-form-icon-field"><UserRound size={17} aria-hidden="true" /><input id="learner-name" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} minLength={2} maxLength={140} placeholder="e.g. Ayesha Khan" autoComplete="name" required /></div>
+      <label htmlFor="learner-email">Email address</label><div className="admin-form-icon-field"><Mail size={17} aria-hidden="true" /><input id="learner-email" type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} maxLength={190} placeholder="name@example.com" autoComplete="email" required /></div>
+      <label className="admin-form-label-with-note" htmlFor="learner-password"><span>{form.id ? "New password" : "Password"}</span><small>{form.id ? "Leave blank to keep current" : "At least 8 characters"}</small></label><div className="admin-form-icon-field admin-form-password-field"><LockKeyhole size={17} aria-hidden="true" /><input id="learner-password" type={showPassword ? "text" : "password"} value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} minLength={8} maxLength={128} autoComplete="new-password" placeholder={form.id ? "Enter a new password" : "Create a password"} required={!form.id} /><button type="button" aria-label={showPassword ? "Hide password" : "Show password"} title={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword((visible) => !visible)}>{showPassword ? <EyeOff size={17} aria-hidden="true" /> : <Eye size={17} aria-hidden="true" />}</button></div>
+      <div className="admin-password-strength" aria-label={`Password strength: ${form.password.length >= 12 ? "strong" : form.password.length >= 8 ? "fair" : form.password.length ? "weak" : "not set"}`}><span className={form.password.length >= 1 ? "is-filled" : ""} /><span className={form.password.length >= 5 ? "is-filled" : ""} /><span className={form.password.length >= 8 ? "is-filled" : ""} /><span className={form.password.length >= 12 ? "is-filled" : ""} /></div>
       {form.id && <><label htmlFor="learner-status">Account status</label><select id="learner-status" value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value as LearnerForm["status"] })}><option value="active">Active</option><option value="inactive">Inactive</option></select></>}
-      <p className="form-hint">Passwords are stored as salted scrypt hashes. Changing a password or account status signs out the learner’s existing sessions.</p>
+      <p className="form-hint"><ShieldCheck size={16} aria-hidden="true" /><span>Passwords are stored as salted scrypt hashes. Changing a password or account status signs out the learner’s existing sessions.</span></p>
       {error && <p className="form-error" role="alert">{error}</p>}
-      <div className="admin-form-page-actions"><button className="button button-primary" type="submit" disabled={busy}>{busy ? "Saving…" : form.id ? "Save learner" : "Create learner"}</button><button className="button button-light" type="button" disabled={busy} onClick={() => setForm(null)}>Cancel</button></div>
+      <div className="admin-form-page-actions"><button className="button button-light" type="button" disabled={busy} onClick={() => setForm(null)}>Cancel</button><button className="button button-primary" type="submit" disabled={busy}>{busy ? "Saving…" : form.id ? "Save learner" : <><Plus size={16} aria-hidden="true" />Create learner</>}</button></div>
     </form></section>
   </div>;
 
