@@ -208,7 +208,6 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
   const [mode, setMode] = useState<"quick" | "bulk" | "bank">(startInBank || !canCreateMcqs ? "bank" : "quick");
   const [paperOptions, setPaperOptions] = useState(papers);
   const [contextRestored, setContextRestored] = useState(false);
-  const [contextEditing, setContextEditing] = useState(false);
   const [topicId, setTopicId] = useState("");
   const [paperId, setPaperId] = useState("");
   const [difficulty, setDifficulty] = useState<"easy" | "medium" | "hard">("medium");
@@ -638,15 +637,13 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
   const paper = selectedPaper();
   const clearContext = () => { paperSelectionLocked.current = true; setPaperId(""); setTopicId(""); setSourceNote(""); setDifficulty("medium"); };
   const contextBar = <section className="mcq-context-bar mcq-context-bar-compact" aria-label="MCQ entry context">
-    <strong className="mcq-context-label">CONTEXT</strong>
-    <div className="mcq-context-pinned" aria-label="Pinned entry context">{paper && <span>{paper.title}</span>}{topicId && <span>{topicOptions.find((option) => option.value === topicId)?.label ?? "Selected topic"}</span>}{difficulty && <span>{difficulty[0].toUpperCase() + difficulty.slice(1)}</span>}{sourceNote && <span>Source: {sourceNote}</span>}{!paper && !topicId && !sourceNote && <small>Choose a category and source to start.</small>}</div>
-    <div className="mcq-context-actions"><button type="button" className="button button-light" aria-expanded={contextEditing} onClick={() => setContextEditing((value) => !value)}>{contextEditing ? "Done" : "Edit context"}</button><button type="button" className="text-link" onClick={clearContext}>Clear</button></div>
-    {contextEditing && <div className="mcq-context-grid">
+    <div className="mcq-context-toolbar"><strong className="mcq-context-label">ENTRY CONTEXT</strong><span>Choose a category and paper together; the selection stays after each save.</span><button type="button" className="text-link" onClick={clearContext}>Clear</button></div>
+    <div className="mcq-context-grid">
       {canUsePapers && <SearchPicker id="mcq-context-paper" label="Exam / paper" value={paperId} options={paperPickerOptions} placeholder="Search exams and papers" onChange={(value) => { paperSelectionLocked.current = true; setPaperId(value); const selected = paperOptions.find((item) => String(item.id) === value); if (selected) setSourceNote(`${selected.examName} ${selected.year} Past Paper`); }} action={canQuickCreatePaper ? { label: "+ New paper", onClick: () => { setNewPaperError(""); setNewPaperOpen(true); } } : undefined} />}
       <SearchPicker id="mcq-context-topic" label="Category · topic" value={topicId} options={topicOptions} placeholder="Search subject › topic" onChange={setTopicId} />
       <div className="mcq-context-field"><label htmlFor="mcq-context-difficulty">Default difficulty</label><select id="mcq-context-difficulty" value={difficulty} onChange={(event) => setDifficulty(event.target.value as typeof difficulty)}><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option></select></div>
       <div className="mcq-context-field"><label htmlFor="mcq-context-source">Source note</label><input id="mcq-context-source" value={sourceNote} onChange={(event) => setSourceNote(event.target.value)} maxLength={500} placeholder={paper ? `${paper.examName} ${paper.year} Past Paper` : "Exam, year, and source"} /></div>
-    </div>}
+    </div>
     {paper && <p className="mcq-context-paper-note">New MCQs will be linked to <strong>{paper.title}</strong> in paper order.</p>}
   </section>;
 

@@ -1380,13 +1380,16 @@ body:has(.admin-page) { background: #f3f7f4; }
 .mcq-entry-heading-actions { display: flex; align-items: center; gap: 10px; }
 .mcq-entry-heading-actions .button { min-height: 40px; }
 .mcq-session-counter { padding: 7px 11px; border-radius: 7px; background: #d6f0e7; color: #07684f; font-size: 12px; font-weight: 700; white-space: nowrap; }
-.mcq-context-bar.mcq-context-bar-compact { position: relative; display: flex; align-items: center; gap: 8px; min-height: 54px; padding: 10px 15px; border-color: #b8e4d4; border-radius: 11px; background: #f3fbf8; box-shadow: none; }
+.mcq-context-bar.mcq-context-bar-compact { position: relative; display: grid; grid-template-columns: minmax(0,1fr); gap: 10px; min-height: 54px; padding: 12px 15px; border-color: #b8e4d4; border-radius: 11px; background: #f3fbf8; box-shadow: none; }
 .mcq-context-label { color: #08785b; font-size: 11px; letter-spacing: .05em; }
+.mcq-context-toolbar { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.mcq-context-toolbar > span { color: #657287; font-size: 12px; }
+.mcq-context-toolbar > .text-link { margin-left: auto; white-space: nowrap; }
 .mcq-context-bar-compact .mcq-context-pinned { flex: 1; min-width: 0; margin: 0; }
 .mcq-context-bar-compact .mcq-context-pinned > span { max-width: 260px; overflow: hidden; padding: 4px 9px; border-color: #d2e5dc; border-radius: 6px; color: #34483f; font-size: 11px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .mcq-context-actions { display: flex; align-items: center; gap: 10px; }
 .mcq-context-actions .button { min-height: 33px; padding-inline: 11px; font-size: 11px; }
-.mcq-context-bar-compact .mcq-context-grid { flex-basis: 100%; margin-top: 8px; }
+.mcq-context-bar-compact .mcq-context-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 10px; width: 100%; margin: 0; }
 .mcq-entry-panel { padding: 0; overflow: hidden; border: 0; border-radius: 12px; background: transparent; box-shadow: none; }
 .mcq-entry-layout { grid-template-columns: minmax(0,1.25fr) minmax(300px,.75fr); gap: 16px; }
 .mcq-entry-form { min-width: 0; padding: 24px; border: 1px solid #dfe5ed; border-radius: 12px; background: #fff; }
@@ -1503,7 +1506,8 @@ body:has(.admin-page) { background: #f3f7f4; }
 :root[data-theme="dark"] .review-detail-options .review-choice.is-correct { border-color: #0c9a73; background: #183a31; }
 :root[data-theme="dark"] .review-decision-card textarea { border-color: #4b5260; background: #292c36; color: #e5e7eb; }
 @media (max-width: 850px) { .mcq-entry-layout, .review-master-detail { grid-template-columns: 1fr; } .mcq-entry-preview-column { position: static; } .review-queue-list { max-height: 320px; overflow-y: auto; } }
-@media (max-width: 600px) { .mcq-entry-page-heading, .review-page-heading { align-items: flex-start; flex-direction: column; } .mcq-entry-heading-actions { width: 100%; justify-content: space-between; } .mcq-context-bar.mcq-context-bar-compact { flex-wrap: wrap; } .mcq-context-bar-compact .mcq-context-pinned { flex-basis: 100%; order: 3; } .mcq-context-actions { margin-left: auto; } .mcq-entry-form { padding: 16px; } .mcq-save-bar { margin: 14px -16px 0; padding: 14px 16px; } .mcq-save-hint { flex-basis: 100%; max-width: none; margin-left: 0; text-align: left; } .review-status-tabs { width: 100%; } .review-status-tabs button { flex: 1; padding-inline: 6px; } .review-detail-body { grid-template-columns: 1fr; padding: 16px; } .review-details-sidebar { padding: 14px 0 0; border-top: 1px solid #e0e6ed; border-left: 0; } .review-detail-header { align-items: flex-start; flex-direction: column; padding: 14px 16px; } .review-decision-card { padding: 15px 16px; } .review-decision-actions { flex-wrap: wrap; } .review-decision-actions .button { flex: 1 1 auto; } }
+@media (max-width: 900px) { .mcq-context-bar-compact .mcq-context-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+@media (max-width: 600px) { .mcq-entry-page-heading, .review-page-heading { align-items: flex-start; flex-direction: column; } .mcq-entry-heading-actions { width: 100%; justify-content: space-between; } .mcq-context-toolbar { align-items: flex-start; flex-wrap: wrap; } .mcq-context-toolbar > span { flex-basis: 100%; order: 3; } .mcq-context-toolbar > .text-link { margin-left: auto; } .mcq-context-bar-compact .mcq-context-grid { grid-template-columns: 1fr; } .mcq-entry-form { padding: 16px; } .mcq-save-bar { margin: 14px -16px 0; padding: 14px 16px; } .mcq-save-hint { flex-basis: 100%; max-width: none; margin-left: 0; text-align: left; } .review-status-tabs { width: 100%; } .review-status-tabs button { flex: 1; padding-inline: 6px; } .review-detail-body { grid-template-columns: 1fr; padding: 16px; } .review-details-sidebar { padding: 14px 0 0; border-top: 1px solid #e0e6ed; border-left: 0; } .review-detail-header { align-items: flex-start; flex-direction: column; padding: 14px 16px; } .review-decision-card { padding: 15px 16px; } .review-decision-actions { flex-wrap: wrap; } .review-decision-actions .button { flex: 1 1 auto; } }
 
 .confirm-modal-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 20px; background: rgba(14, 30, 25, .52); backdrop-filter: blur(3px); }
 .confirm-modal { width: min(100%, 460px); padding: 28px; border: 1px solid #e4e9e4; border-radius: 16px; background: #fff; box-shadow: 0 24px 80px rgba(13, 36, 28, .25); }
