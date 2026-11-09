@@ -2874,3 +2874,52 @@ body:has(.admin-dashboard) { background: #f1f2f7; }
 
 /* The form heading uses a square icon-only back button; its span must not occupy a grid cell. */
 .admin-form-screen-heading > .button > span { display: none; }
+
+/* Keep question text, metadata, and status in separate tracks in the paper picker. */
+.paper-picker-results .paper-picker-result {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 7px;
+  min-height: 0;
+  padding: 7px 4px;
+}
+.paper-picker-results .paper-picker-result input { margin-top: 4px; }
+.paper-picker-result-copy { align-content: start; gap: 3px; }
+.paper-picker-result-copy strong {
+  display: block;
+  min-width: 0;
+  color: #30463a;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.paper-picker-result-copy strong .localized-text-with-urdu {
+  display: block;
+  direction: rtl;
+  line-height: 1.9;
+  text-align: right;
+  white-space: normal;
+}
+.paper-picker-result-copy small {
+  display: block;
+  min-width: 0;
+  color: #77867c;
+  font-size: 10px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.paper-picker-results .paper-picker-result > .admin-status {
+  align-self: start;
+  margin-top: 1px;
+  padding: 3px 7px;
+  font-size: 9px;
+  white-space: nowrap;
+}
+:root[data-theme="dark"] .paper-picker-result-copy strong { color: #e5eee9; }
+:root[data-theme="dark"] .paper-picker-result-copy small { color: #a8b9b0; }
+@media (max-width: 600px) {
+  .paper-picker-results .paper-picker-result { grid-template-columns: 16px minmax(0, 1fr); }
+  .paper-picker-results .paper-picker-result > .admin-status { grid-column: 2; justify-self: start; }
+}
