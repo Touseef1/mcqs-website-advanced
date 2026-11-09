@@ -6,6 +6,7 @@ import { AdminSignOutButton } from "@/components/AdminSignOutButton";
 import { AdminQuestionWorkspace } from "@/components/AdminQuestionWorkspace";
 import { AdminExams } from "@/components/AdminExams";
 import { AdminActivityLogs } from "@/components/AdminActivityLogs";
+import { AdminLearners } from "@/components/AdminLearners";
 import { useConfirmModal } from "@/components/ConfirmModal";
 import { Activity, Archive, ArrowLeft, Building2, Clock3, Download, FileText, FolderOpen, KeyRound, LayoutDashboard, ListChecks, Pencil, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, Search, Users } from "lucide-react";
 import type { AdminCapabilities, AdminPrincipal, AdminRole } from "@/lib/admin-auth";
@@ -25,13 +26,13 @@ type AdminUser = { id: string; name: string; email: string; role: AdminRole; sta
 type ExamRow = { id: number; name: string; slug: string };
 type DashboardStats = { statuses: Record<string, number>; myStatuses: Record<string, number>; categories: Array<{ subject_name: string; topic_name: string; question_count: number }>; emptyCategories: Array<{ subject_name: string; topic_name: string; question_count: number }>; shortPapers: Array<{ id: number; title: string; expected_question_count: number; question_count: number }> };
 type AdminApiData = { subjects?: SubjectRow[]; topics?: TopicRow[]; questions?: AdminQuestion[]; papers?: AdminPaper[]; exams?: ExamRow[]; users?: AdminUser[]; statuses?: Record<string, number>; categories?: DashboardStats["categories"]; emptyCategories?: DashboardStats["emptyCategories"]; shortPapers?: DashboardStats["shortPapers"]; [key: string]: unknown };
-type Tab = "overview" | "questions" | "review" | "categories" | "exams" | "papers" | "team" | "activity";
+type Tab = "overview" | "questions" | "review" | "categories" | "exams" | "papers" | "team" | "learners" | "activity";
 
-const tabLabels: Record<Tab, string> = { overview: "Overview", questions: "MCQ bank", review: "Review queue", categories: "Categories", exams: "Exams", papers: "Past papers", team: "Team & roles", activity: "Activity logs" };
+const tabLabels: Record<Tab, string> = { overview: "Overview", questions: "MCQ bank", review: "Review queue", categories: "Categories", exams: "Exams", papers: "Past papers", team: "Team & roles", learners: "Learners", activity: "Activity logs" };
 const roleLabels: Record<AdminRole, string> = { data_entry: "Data Entry", reviewer: "Reviewer", publisher: "Publisher", admin: "Admin", super_admin: "Super Admin" };
 
 function NavIcon({ tab }: { tab: Tab }) {
-  const icons = { overview: LayoutDashboard, questions: ListChecks, review: Clock3, categories: FolderOpen, exams: Building2, papers: FileText, activity: Activity, team: Users };
+  const icons = { overview: LayoutDashboard, questions: ListChecks, review: Clock3, categories: FolderOpen, exams: Building2, papers: FileText, activity: Activity, team: Users, learners: Users };
   const Icon = icons[tab];
   return <Icon size={18} strokeWidth={1.8} aria-hidden="true" />;
 }
@@ -140,6 +141,7 @@ export function AdminDashboard({ principal, capabilities }: { principal: AdminPr
     ...(capabilities.manageCategories ? ["categories" as const] : []),
     ...(capabilities.managePapers ? ["exams" as const, "papers" as const] : []),
     ...(capabilities.manageUsers ? ["team" as const] : []),
+    ...(capabilities.manageUsers ? ["learners" as const] : []),
     ...(principal.role === "super_admin" ? ["activity" as const] : []),
   ], [capabilities.manageCategories, capabilities.managePapers, capabilities.manageUsers, capabilities.reviewMcqs, principal.role]);
 
@@ -196,7 +198,7 @@ export function AdminDashboard({ principal, capabilities }: { principal: AdminPr
         <nav aria-label="Admin sections">
           <div className="admin-sidebar-group"><div className="admin-sidebar-label">CONTENT</div>{allowedTabs.filter((item) => ["overview", "questions", "review", "categories"].includes(item)).map((item) => <button type="button" key={item} className={tab === item ? "active" : ""} aria-current={tab === item ? "page" : undefined} onClick={() => selectTab(item)} title={tabLabels[item]}><span className="admin-nav-icon"><NavIcon tab={item} /></span><span>{tabLabels[item]}</span>{item === "review" && <span className="admin-nav-count" title={`${dashboardStats.statuses.in_review ?? 0} questions waiting for review`} aria-label={`${dashboardStats.statuses.in_review ?? 0} questions waiting for review`}>{dashboardStats.statuses.in_review ?? 0}</span>}</button>)}</div>
           {allowedTabs.some((item) => ["exams", "papers"].includes(item)) && <div className="admin-sidebar-group"><div className="admin-sidebar-label">PAPERS</div>{allowedTabs.filter((item) => ["exams", "papers"].includes(item)).map((item) => <button type="button" key={item} className={tab === item ? "active" : ""} aria-current={tab === item ? "page" : undefined} onClick={() => selectTab(item)} title={tabLabels[item]}><span className="admin-nav-icon"><NavIcon tab={item} /></span><span>{tabLabels[item]}</span></button>)}</div>}
-          {allowedTabs.some((item) => ["team", "activity"].includes(item)) && <div className="admin-sidebar-group"><div className="admin-sidebar-label">ADMIN</div>{allowedTabs.filter((item) => ["team", "activity"].includes(item)).map((item) => <button type="button" key={item} className={tab === item ? "active" : ""} aria-current={tab === item ? "page" : undefined} onClick={() => selectTab(item)} title={tabLabels[item]}><span className="admin-nav-icon"><NavIcon tab={item} /></span><span>{tabLabels[item]}</span></button>)}</div>}
+          {allowedTabs.some((item) => ["team", "learners", "activity"].includes(item)) && <div className="admin-sidebar-group"><div className="admin-sidebar-label">ADMIN</div>{allowedTabs.filter((item) => ["team", "learners", "activity"].includes(item)).map((item) => <button type="button" key={item} className={tab === item ? "active" : ""} aria-current={tab === item ? "page" : undefined} onClick={() => selectTab(item)} title={tabLabels[item]}><span className="admin-nav-icon"><NavIcon tab={item} /></span><span>{tabLabels[item]}</span></button>)}</div>}
         </nav>
         <div className="admin-sidebar-spacer" />
         <div className="admin-user-chip"><span className="admin-avatar">{principal.name.slice(0, 1).toUpperCase()}</span><span><strong>{principal.name}</strong><small>{roleLabels[principal.role]}</small></span></div>
@@ -208,7 +210,7 @@ export function AdminDashboard({ principal, capabilities }: { principal: AdminPr
           <div className="admin-topbar-actions"><ThemeToggle /><span className="admin-topbar-user"><span className="admin-avatar">{principal.name.slice(0, 1).toUpperCase()}</span><span className="admin-topbar-meta"><strong>{principal.name}</strong><small>{roleLabels[principal.role]}</small></span></span><a className="button button-light" href="/admin/password"><KeyRound size={15} aria-hidden="true" /><span>Password</span></a><button className="button button-light admin-refresh" type="button" onClick={() => void refresh()} disabled={loading}><RefreshCw size={15} aria-hidden="true" /><span>{loading ? "Refreshing…" : "Refresh"}</span></button></div>
         </header>
         <main className="admin-content-area">
-          {!(tab === "questions" && openMcqEntryOnTab) && tab !== "review" && <div className="admin-section-intro"><div><p className="admin-kicker">Workspace</p><h1>{tabLabels[tab]}</h1><p>{tab === "overview" ? "See what needs attention, then jump into categories, papers, or the MCQ bank." : tab === "questions" ? "Manage the question bank or open a focused MCQ entry form." : tab === "categories" ? "Subjects hold topics. Every MCQ belongs to one topic." : tab === "exams" ? "Keep exam bodies consistent before you build papers." : tab === "papers" ? "Manage papers and their question order." : tab === "team" ? "Manage staff access and content permissions." : "Review staff sign-ins and content changes."}</p></div>{(tab === "overview" || tab === "questions") && capabilities.createMcqs && <button type="button" className="button button-primary" onClick={() => { setGlobalSearch(""); setOpenMcqEntryOnTab(true); setTab("questions"); }}><Plus size={16} />Add MCQ</button>}</div>}
+          {!(tab === "questions" && openMcqEntryOnTab) && tab !== "review" && <div className="admin-section-intro"><div><p className="admin-kicker">Workspace</p><h1>{tabLabels[tab]}</h1><p>{tab === "overview" ? "See what needs attention, then jump into categories, papers, or the MCQ bank." : tab === "questions" ? "Manage the question bank or open a focused MCQ entry form." : tab === "categories" ? "Subjects hold topics. Every MCQ belongs to one topic." : tab === "exams" ? "Keep exam bodies consistent before you build papers." : tab === "papers" ? "Manage papers and their question order." : tab === "team" ? "Manage staff access and content permissions." : tab === "learners" ? "Search learner accounts, update their details, or reset account access." : tab === "activity" ? "Review staff sign-ins and content changes." : "Manage the admin workspace."}</p></div>{(tab === "overview" || tab === "questions") && capabilities.createMcqs && <button type="button" className="button button-primary" onClick={() => { setGlobalSearch(""); setOpenMcqEntryOnTab(true); setTab("questions"); }}><Plus size={16} />Add MCQ</button>}</div>}
           <ErrorMessage>{loadError}</ErrorMessage>
           {loading && !subjects.length && !questions.length && !papers.length ? <div className="loading-panel">Loading admin records…</div> : null}
           {tab === "overview" && <OverviewPanel role={principal.role} subjects={subjects} topics={topics} questions={questions} papers={papers} users={users} metrics={dashboardStats} canManageCategories={capabilities.manageCategories} canManagePapers={capabilities.managePapers} canManageUsers={capabilities.manageUsers} canCreateMcqs={capabilities.createMcqs} canReviewMcqs={capabilities.reviewMcqs} onSelect={selectTab} />}
@@ -217,6 +219,7 @@ export function AdminDashboard({ principal, capabilities }: { principal: AdminPr
           {tab === "exams" && capabilities.managePapers && <AdminExams exams={exams} onSave={(body, method) => perform(() => sendAdmin("/api/admin/exams", method, body, confirm), "Exam saved.")} />}
           {tab === "papers" && capabilities.managePapers && <PapersPanel papers={papers} exams={exams} subjects={subjects} topics={topics} quickFilter={paperQuickFilter} onQuickFilter={setPaperQuickFilter} canEdit={capabilities.managePapers} canPublish={capabilities.publishContent} canDelete={capabilities.managePapers} onExport={downloadExport} onSave={(body, method) => perform(() => sendAdmin("/api/admin/papers", method, body, confirm), "Paper saved.")} onStatus={(id, status) => perform(() => sendAdmin("/api/admin/papers", "PATCH", { id, status }, confirm), `Paper ${status}.`)} onReorder={(paperId, questionIds) => perform(() => sendAdmin("/api/admin/papers/reorder", "POST", { paperId, questionIds }, confirm), "Question order saved.")} onAddMcqs={(paperId) => { setEntryPaperId(paperId); setTab("questions"); }} />}
           {tab === "team" && capabilities.manageUsers && <TeamPanel users={users} currentId={principal.id} isSuperAdmin={principal.role === "super_admin"} onSave={(body, method) => perform(() => sendAdmin("/api/admin/users", method, body, confirm), "User account saved.")} />}
+          {tab === "learners" && capabilities.manageUsers && <AdminLearners />}
           {tab === "activity" && principal.role === "super_admin" && <AdminActivityLogs />}
         </main>
         <footer className="admin-workspace-footer"><span>MCQPath Admin</span><span>Content operations workspace · {new Date().getFullYear()}</span></footer>

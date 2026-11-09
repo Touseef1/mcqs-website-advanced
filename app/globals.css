@@ -2467,6 +2467,30 @@ body:has(.admin-dashboard) { background: #f1f2f7; }
 .admin-list-search input { width: 100%; min-width: 0; padding: 7px 0; border: 0 !important; outline: 0; background: transparent !important; color: #313a46; font-size: 12px; }
 .admin-list-search input:focus { outline: 0; box-shadow: none; }
 .admin-list-search:focus-within { border-color: #1ab394; box-shadow: 0 0 0 3px rgba(26,179,148,.12); }
+.learner-directory-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 14px 18px; border-top: 1px solid #e7e9eb; }
+.learner-directory-toolbar > span { color: #8a969c; font-size: 11px; }
+.learner-directory-toolbar .admin-list-search { width: min(100%, 480px); }
+.learner-directory-toolbar .admin-list-search kbd { flex: 0 0 auto; border: 0; background: transparent; color: #a1a9b1; }
+.learner-directory-error { margin: 12px 18px; }
+.learner-management-table { min-width: 820px; }
+.learner-management-table td:first-child { min-width: 240px; }
+.learner-management-table td:nth-child(2), .learner-management-table td:nth-child(3), .learner-management-table td:nth-child(4) { white-space: nowrap; }
+.learner-directory-pagination { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 14px 18px; border-top: 1px solid #e7e9eb; }
+.learner-directory-pagination > span { color: #8a969c; font-size: 11px; }
+.learner-directory-pagination .learner-pagination { margin-left: auto; }
+.learner-deactivate-button { color: #a15d50; }
+.learner-account-form { max-width: 720px; }
+:root[data-theme="dark"] .learner-directory-toolbar,
+:root[data-theme="dark"] .learner-directory-pagination { border-color: #3b3d49; }
+:root[data-theme="dark"] .learner-directory-toolbar > span,
+:root[data-theme="dark"] .learner-directory-pagination > span { color: #a1a9b1; }
+:root[data-theme="dark"] .learner-deactivate-button { border-color: #734843; color: #f0a39b; }
+@media (max-width: 640px) {
+  .learner-directory-toolbar { align-items: stretch; padding: 12px; }
+  .learner-directory-toolbar .admin-list-search { width: 100%; }
+  .learner-directory-pagination { justify-content: center; padding: 12px; }
+  .learner-directory-pagination .learner-pagination { margin: 0; }
+}
 .admin-paper-editor-page { max-width: none; }
 .admin-paper-editor-page .paper-builder-form { margin: 0; }
 .review-queue-panel { padding: 0; overflow: hidden; }
