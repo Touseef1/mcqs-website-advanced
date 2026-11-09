@@ -2881,9 +2881,10 @@ body:has(.admin-dashboard) { background: #f1f2f7; }
   grid-template-columns: 16px minmax(0, 1fr) auto;
   align-items: start;
   gap: 7px;
-  min-height: 0;
+  min-height: 64px;
   padding: 7px 4px;
 }
+.paper-picker-results { grid-auto-rows: minmax(64px, max-content); align-content: start; }
 .paper-picker-results .paper-picker-result input { margin-top: 4px; }
 .paper-picker-result-copy { align-content: start; gap: 3px; }
 .paper-picker-result-copy strong {
@@ -2902,6 +2903,7 @@ body:has(.admin-dashboard) { background: #f1f2f7; }
   text-align: right;
   white-space: normal;
 }
+.paper-picker-result-copy strong .urdu-text { line-height: 1.8; }
 .paper-picker-result-copy small {
   display: block;
   min-width: 0;
