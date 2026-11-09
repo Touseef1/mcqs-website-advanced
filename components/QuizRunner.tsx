@@ -7,6 +7,7 @@ import { getErrorMessage, parseApiResponse } from "@/lib/error-message";
 import { notify } from "@/lib/toast";
 import { MCQImage } from "@/components/MCQImage";
 import { LocalizedText } from "@/components/LocalizedText";
+import { RichText } from "@/components/RichText";
 import ReactPaginate from "react-paginate";
 
 type QuizResult = {
@@ -234,7 +235,7 @@ export function QuizRunner({ questions, title, quizSlug, quizPath, canBookmark =
                 <ul className="review-choice-list">{question.choices.map((choice) => <li className={choice.label === answer?.correctChoice ? "is-correct" : choice.label === answer?.selectedChoice ? "is-selected" : ""} key={choice.label}><b>{choice.label}.</b>{choice.text && <LocalizedText>{choice.text}</LocalizedText>}{choice.imageUrl && <MCQImage src={choice.imageUrl} alt={`Option ${choice.label} image`} size="option" />}</li>)}</ul>
                 {(answer?.explanation || question.explanation) && <details className="question-explanation">
                   <summary>Show explanation</summary>
-                  <p><LocalizedText>{answer?.explanation || question.explanation}</LocalizedText></p>
+                  <RichText value={answer?.explanation || question.explanation} />
                 </details>}
                 {onRemoveQuestion && <button type="button" className="account-wrong-remove" disabled={removingQuestionId === question.id} onClick={() => removeWrongQuestion(question.id)}>{removingQuestionId === question.id ? "Removing…" : "Remove from wrong questions"}</button>}
               </article>
@@ -290,7 +291,7 @@ export function QuizRunner({ questions, title, quizSlug, quizPath, canBookmark =
                 {mode === "quiz" && revealed && <span className="sr-only" role="status">Answer checked.</span>}
                 {question.explanation && <details className="question-explanation">
                   <summary>Show explanation</summary>
-                  <p><LocalizedText>{question.explanation}</LocalizedText></p>
+                  <RichText value={question.explanation} />
                 </details>}
                 {onRemoveQuestion && <button type="button" className="account-wrong-remove" disabled={removingQuestionId === question.id} onClick={() => removeWrongQuestion(question.id)}>{removingQuestionId === question.id ? "Removing…" : "Remove from wrong questions"}</button>}
               </article>

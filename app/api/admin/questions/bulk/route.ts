@@ -8,6 +8,7 @@ import { linkPublishedQuestionsBySource } from "@/lib/paper-links";
 
 import { auditAdmin, csrfFailure } from "@/lib/admin-security";
 import { detectQuestionLanguage } from "@/lib/language";
+import { richTextToPlainText, sanitizeRichText } from "@/lib/rich-text";
 const labels = ["A", "B", "C", "D"] as const;
 type InputQuestion = { prompt: string; choices: string[]; correctChoice: string; explanation: string };
 
@@ -32,9 +33,9 @@ function parseInputQuestion(value: unknown): InputQuestion | null {
   const prompt = typeof row.prompt === "string" ? row.prompt.trim() : "";
   const choices = Array.isArray(row.choices) ? row.choices.map((choice) => typeof choice === "string" ? choice.trim() : "") : [];
   const correctChoice = typeof row.correctChoice === "string" ? row.correctChoice : "";
-  const explanation = typeof row.explanation === "string" ? row.explanation.trim() : "";
+  const explanation = typeof row.explanation === "string" ? sanitizeRichText(row.explanation.trim()) : "";
   const normalized = choices.map((choice) => choice.normalize("NFKC").replace(/\s+/g, " ").toLocaleLowerCase());
-  if (prompt.length < 8 || prompt.length > 1500 || choices.length !== 4 || choices.some((choice) => !choice || choice.length > 800) || new Set(normalized).size !== 4 || !labels.includes(correctChoice as typeof labels[number]) || explanation.length > 3000) return null;
+  if (prompt.length < 8 || prompt.length > 1500 || choices.length !== 4 || choices.some((choice) => !choice || choice.length > 800) || new Set(normalized).size !== 4 || !labels.includes(correctChoice as typeof labels[number]) || richTextToPlainText(explanation).length > 3000) return null;
   return { prompt, choices, correctChoice, explanation };
 }
 

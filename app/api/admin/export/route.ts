@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { RowDataPacket } from "mysql2";
 import { getAdminPrincipal, requirePermission } from "@/lib/admin-auth";
 import { db, hasDatabase } from "@/lib/db";
+import { richTextToPlainText } from "@/lib/rich-text";
 
 type ExportQuestion = RowDataPacket & { id: number; prompt: string; topic: string; subject: string; source_note: string; explanation: string; correct_choice: string; question_image_url: string | null };
 type ExportChoice = RowDataPacket & { question_id: number; label: string; choice_text: string; image_url: string | null };
@@ -65,7 +66,7 @@ export async function GET(request: Request) {
   const rows = questions.map((question) => {
     const options = choiceByQuestion.get(question.id) ?? new Map<string, ExportChoice>();
     const labels = ["A", "B", "C", "D"];
-    return [question.id, question.subject, question.topic, question.prompt, question.question_image_url ?? "", ...labels.map((label) => `${label}) ${options.get(label)?.choice_text ?? ""}`), ...labels.map((label) => options.get(label)?.image_url ?? ""), question.correct_choice, question.explanation, question.source_note];
+    return [question.id, question.subject, question.topic, question.prompt, question.question_image_url ?? "", ...labels.map((label) => `${label}) ${options.get(label)?.choice_text ?? ""}`), ...labels.map((label) => options.get(label)?.image_url ?? ""), question.correct_choice, richTextToPlainText(question.explanation), question.source_note];
   });
   const safeName = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "mcqs";
   if (format === "csv") {

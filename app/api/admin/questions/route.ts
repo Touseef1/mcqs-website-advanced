@@ -7,6 +7,7 @@ import { db, hasDatabase } from "@/lib/db";
 import { linkPublishedQuestionsBySource } from "@/lib/paper-links";
 import { auditAdmin } from "@/lib/admin-security";
 import { detectQuestionLanguage } from "@/lib/language";
+import { richTextToPlainText, sanitizeRichText } from "@/lib/rich-text";
 
 import { csrfFailure } from "@/lib/admin-security";
 const labels = ["A", "B", "C", "D"] as const;
@@ -29,20 +30,20 @@ function refreshQuestions() {
 function parseQuestion(body: Record<string, unknown> | null) {
   const topicId = Number(body?.topicId);
   const prompt = typeof body?.prompt === "string" ? body.prompt.trim() : "";
-  const explanation = typeof body?.explanation === "string" ? body.explanation.trim() : "";
+  const explanation = typeof body?.explanation === "string" ? sanitizeRichText(body.explanation.trim()) : "";
   const sourceNote = typeof body?.sourceNote === "string" ? body.sourceNote.trim() : "";
   const choices = Array.isArray(body?.choices) ? body.choices.map((choice) => typeof choice === "string" ? choice.trim() : "") : [];
   const correctChoice = typeof body?.correctChoice === "string" ? body.correctChoice : "";
   const questionImageUrl = typeof body?.questionImageUrl === "string" && body.questionImageUrl ? body.questionImageUrl : null;
   const choiceImageUrls = Array.isArray(body?.choiceImageUrls) ? body.choiceImageUrls.map((url) => typeof url === "string" && url ? url : null) : [null, null, null, null];
   const difficulty = body?.difficulty === "easy" || body?.difficulty === "hard" ? body.difficulty : "medium";
-  const language = detectQuestionLanguage([prompt, ...choices, explanation]);
+  const language = detectQuestionLanguage([prompt, ...choices, richTextToPlainText(explanation)]);
   const paperIds = body && Object.hasOwn(body, "paperIds")
     ? Array.isArray(body.paperIds) ? [...new Set(body.paperIds.map(Number))] : null
     : undefined;
   const normalizedChoices = choices.map((choice) => choice.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase());
   const validImage = (url: unknown) => url == null || (typeof url === "string" && /^\/uploads\/mcqs\/[a-f0-9-]{36}\.(?:png|jpg|webp)$/.test(url));
-  if (!Number.isInteger(topicId) || topicId < 1 || prompt.length < 8 || prompt.length > 1500 || explanation.length > 3000 || sourceNote.length < 4 || sourceNote.length > 500 || choices.length !== 4 || choices.some((choice) => choice.length < 1 || choice.length > 800) || new Set(normalizedChoices).size !== 4 || !labels.includes(correctChoice as typeof labels[number]) || choiceImageUrls.length !== 4 || !validImage(questionImageUrl) || choiceImageUrls.some((url) => !validImage(url)) || paperIds === null || (paperIds && (paperIds.length > 50 || paperIds.some((id) => !Number.isSafeInteger(id) || id < 1)))) return null;
+  if (!Number.isInteger(topicId) || topicId < 1 || prompt.length < 8 || prompt.length > 1500 || richTextToPlainText(explanation).length > 3000 || sourceNote.length < 4 || sourceNote.length > 500 || choices.length !== 4 || choices.some((choice) => choice.length < 1 || choice.length > 800) || new Set(normalizedChoices).size !== 4 || !labels.includes(correctChoice as typeof labels[number]) || choiceImageUrls.length !== 4 || !validImage(questionImageUrl) || choiceImageUrls.some((url) => !validImage(url)) || paperIds === null || (paperIds && (paperIds.length > 50 || paperIds.some((id) => !Number.isSafeInteger(id) || id < 1)))) return null;
   return { topicId, prompt, explanation, sourceNote, choices, choiceImageUrls, questionImageUrl, correctChoice, difficulty, language, paperIds };
 }
 
