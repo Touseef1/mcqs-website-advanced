@@ -15,13 +15,26 @@ export type TestPointTaxonomy = {
 
 const TESTPOINT_ORIGIN = "https://testpointpk.com";
 
+function isSupportedListingPath(pathname: string) {
+  let decoded: string;
+  try { decoded = decodeURIComponent(pathname); } catch { return false; }
+  const normalized = decoded.replace(/\/+$/, "") || "/";
+  if (normalized.toLowerCase() === "/all-mcqs-categories") return true;
+  const match = normalized.match(/^\/(important-mcqs|subcategory-mcqs)\/([^/]+)$/i);
+  return Boolean(match && match[2].length <= 180 && /^[\p{L}\p{N}&-]+$/u.test(match[2]));
+}
+
+function decodedPath(pathname: string) {
+  try { return decodeURIComponent(pathname); } catch { return ""; }
+}
+
 /** Accept only public TestPoint taxonomy and MCQ listing pages (prevents SSRF). */
 export function parseTestPointListingUrl(value: unknown): URL | null {
   if (typeof value !== "string" || value.length > 800) return null;
   try {
     const url = new URL(value);
     if (url.protocol !== "https:" || url.hostname !== "testpointpk.com" || url.port || url.username || url.password) return null;
-    if (!/^\/(?:all-mcqs-categories|important-mcqs\/[a-z0-9-]+|subcategory-mcqs\/[a-z0-9-]+)\/?$/i.test(url.pathname)) return null;
+    if (!isSupportedListingPath(url.pathname)) return null;
     for (const key of url.searchParams.keys()) if (key !== "page") return null;
     const page = Number(url.searchParams.get("page") ?? 1);
     if (!Number.isSafeInteger(page) || page < 1 || page > 80) return null;
@@ -33,7 +46,7 @@ export function parseTestPointListingUrl(value: unknown): URL | null {
 }
 
 function slugFromUrl(path: string) {
-  return path.split("/").filter(Boolean).at(-1) ?? "";
+  return (decodedPath(path).split("/").filter(Boolean).at(-1) ?? "");
 }
 
 export function parseTestPointTaxonomy(html: string, source: URL): TestPointTaxonomy {
@@ -42,17 +55,18 @@ export function parseTestPointTaxonomy(html: string, source: URL): TestPointTaxo
   const anchorPattern = /<a\b[^>]*href\s*=\s*(["'])(.*?)\1[^>]*>([\s\S]*?)<\/a>/gi;
   for (const match of html.matchAll(anchorPattern)) {
     let link: URL;
-    try { link = new URL(match[2], TESTPOINT_ORIGIN); } catch { continue; }
+    try { link = new URL(decodeHtml(match[2]), TESTPOINT_ORIGIN); } catch { continue; }
     if (link.hostname !== "testpointpk.com" || link.protocol !== "https:") continue;
     const name = htmlToText(match[3]);
     if (name.length < 2 || name.length > 160) continue;
     const item = { name, slug: slugFromUrl(link.pathname), url: `${TESTPOINT_ORIGIN}${link.pathname}` };
-    if (/^\/important-mcqs\/[a-z0-9-]+\/?$/i.test(link.pathname)) subjects.set(item.slug, item);
-    if (/^\/subcategory-mcqs\/[a-z0-9-]+\/?$/i.test(link.pathname)) topics.set(item.slug, item);
+    const path = decodedPath(link.pathname);
+    if (isSupportedListingPath(link.pathname) && /^\/important-mcqs\//i.test(path)) subjects.set(item.slug, item);
+    if (isSupportedListingPath(link.pathname) && /^\/subcategory-mcqs\//i.test(path)) topics.set(item.slug, item);
   }
 
   const slug = slugFromUrl(source.pathname);
-  if (/^\/important-mcqs\//i.test(source.pathname)) {
+  if (/^\/important-mcqs\//i.test(decodedPath(source.pathname))) {
     const heading = html.match(/<h[1-3]\b[^>]*>([\s\S]*?)<\/h[1-3]>/i)?.[1];
     const name = (heading ? htmlToText(heading) : slug.replace(/-/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase())).replace(/\s+mcqs?$/i, "").trim();
     return { subjects: [], subject: { name, slug }, topics: [...topics.values()] };
@@ -88,17 +102,18 @@ export function getTestPointTotalPages(html: string) {
 }
 
 export function parseTestPointQuestions(html: string): ExternalMcq[] {
-  const headings = [...html.matchAll(/<h5\b[^>]*>[\s\S]*?<\/h5>/gi)];
+  // TestPoint uses h5-wrapped question links on some subcategory pages, but
+  // subject pages such as Maths put the same links directly inside a div.
+  // Parse question links themselves and use the next question link as a boundary.
+  const pageHtml = html.replace(/<!--[\s\S]*?-->/g, "");
+  const questionLinks = [...pageHtml.matchAll(/<a\b[^>]*href\s*=\s*(["'])(.*?)\1[^>]*>([\s\S]*?)<\/a>/gi)]
+    .filter((match) => /\/mcqs\/\d+\//i.test(decodeHtml(match[2])) && !/#comment-form/i.test(match[2]));
   const results: ExternalMcq[] = [];
 
-  for (const [index, headingMatch] of headings.entries()) {
-    const heading = headingMatch[0];
-    const link = heading.match(/<a\b[^>]*href\s*=\s*(["'])(.*?)\1[^>]*>([\s\S]*?)<\/a>/i);
-    if (!link || !/\/mcqs\/\d+\//.test(link[2])) continue;
-
-    const blockStart = (headingMatch.index ?? 0) + heading.length;
-    const blockEnd = headings[index + 1]?.index ?? html.length;
-    const block = html.slice(blockStart, blockEnd);
+  for (const [index, link] of questionLinks.entries()) {
+    const blockStart = (link.index ?? 0) + link[0].length;
+    const blockEnd = questionLinks[index + 1]?.index ?? pageHtml.length;
+    const block = pageHtml.slice(blockStart, blockEnd);
     const optionsList = block.match(/<ol\b[^>]*>([\s\S]*?)<\/ol>/i)?.[1];
     if (!optionsList) continue;
 
@@ -117,7 +132,7 @@ export function parseTestPointQuestions(html: string): ExternalMcq[] {
     const explanation = htmlToText(explanationHtml
       .replace(/<h6\b[^>]*>\s*Explanation\s*<\/h6>/i, "")
       .replace(/Last\s+(?:verified|updated|update)\s+[^<\n]*/gi, ""), true);
-    const sourceUrl = new URL(link[2], TESTPOINT_ORIGIN);
+    const sourceUrl = new URL(decodeHtml(link[2]), TESTPOINT_ORIGIN);
     if (sourceUrl.hostname !== "testpointpk.com") continue;
     results.push({
       sourceId: sourceUrl.pathname.split("/").filter(Boolean)[1] ?? sourceUrl.pathname,
