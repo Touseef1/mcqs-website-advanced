@@ -5,6 +5,7 @@ import Image from "next/image";
 import dynamic from "next/dynamic";
 import { LocalizedText } from "@/components/LocalizedText";
 import { RichText } from "@/components/RichText";
+import { TestPointMcqImporter } from "@/components/TestPointMcqImporter";
 import { Archive, Bookmark, ChevronLeft, ChevronRight, Eye, Filter, Pencil, Plus, Search, SlidersHorizontal, Upload } from "lucide-react";
 import { containsUrduScript, detectQuestionLanguage } from "@/lib/language";
 import { useConfirmModal } from "@/components/ConfirmModal";
@@ -251,6 +252,7 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
   const [bulkTopicId, setBulkTopicId] = useState("");
   const [reviewNote, setReviewNote] = useState("");
   const [pasteText, setPasteText] = useState("");
+  const [externalImporterOpen, setExternalImporterOpen] = useState(false);
   const [bulkRows, setBulkRows] = useState<PreviewRow[]>([]);
   const [csvFileName, setCsvFileName] = useState("");
   const [newPaperOpen, setNewPaperOpen] = useState(false);
@@ -679,6 +681,8 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
     {mode === "bulk" && canCreateMcqs && <section className="admin-panel mcq-bulk-panel">
       <div className="admin-panel-heading"><div><span className="eyebrow">BULK ENTRY</span><h3>Paste multiple MCQs or upload a CSV</h3><p>Paste blank-line-separated question blocks, or use CSV columns: question, A, B, C, D, answer, explanation.</p></div></div>
       <p className="form-hint">Question language is detected automatically for each MCQ.</p>
+      <button type="button" className="button button-light testpoint-importer-toggle" aria-expanded={externalImporterOpen} onClick={() => setExternalImporterOpen((open) => !open)}>{externalImporterOpen ? "Close TestPoint importer" : "Import from TestPoint Urdu Adab"}</button>
+      {externalImporterOpen && <TestPointMcqImporter onSendToBulk={(text) => { setPasteText(text); setBulkRows([]); setCsvFileName(""); setExternalImporterOpen(false); toastNotify.success("Selected MCQs and explanations were added to the bulk editor. Review them before importing."); }} />}
       <label className="mcq-csv-upload" htmlFor="mcq-csv-file">Upload CSV <input id="mcq-csv-file" type="file" accept=".csv,text/csv" onChange={(event) => void handleCsvFile(event)} /></label>
       {csvFileName && <p className="admin-helper">Loaded {csvFileName}. You can also edit the parsed source below.</p>}
       <textarea className={`mcq-bulk-textarea ${containsUrduScript(pasteText) ? "urdu-aware-input" : ""}`} lang={containsUrduScript(pasteText) ? "ur" : "en"} dir="auto" value={pasteText} onChange={(event) => setPasteText(event.target.value)} rows={12} placeholder={`Q: Which word is a noun?\nA) Quickly\nB) Honest\nC) Teacher\nD) Run\nAnswer: C\nExplanation: A teacher is a person.\n\nQ: ...`} />
