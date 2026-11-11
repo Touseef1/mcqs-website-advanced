@@ -2843,6 +2843,66 @@ body:has(.admin-dashboard) { background: #f1f2f7; }
 :root[data-theme="dark"] .mcq-explanation-editor .ck.ck-toolbar .ck-button .ck-icon { color: #e5e7eb; }
 :root[data-theme="dark"] .mcq-explanation-count { color: #aab2bf; }
 
+/* Optional, removable importer for the external Urdu Adab source. */
+.testpoint-importer-toggle { margin: 4px 0 12px; }
+.testpoint-importer { margin: 12px 0 18px; padding: 14px; border: 1px solid #d8e6df; border-radius: 10px; background: #f8fbf9; }
+.testpoint-importer-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.testpoint-importer-header h3 { margin: 4px 0; color: #24342d; font-size: 16px; }
+.testpoint-importer-header p { margin: 0; color: #6a786f; font-size: 12px; }
+.testpoint-importer-header .button { min-height: 34px; padding-inline: 11px; font-size: 11px; white-space: nowrap; }
+.testpoint-importer-progress { display: block; width: 100%; height: 5px; margin: 12px 0; accent-color: #0c8c69; }
+.testpoint-spinner { animation: testpoint-spin 1s linear infinite; }
+@keyframes testpoint-spin { to { transform: rotate(360deg); } }
+.testpoint-importer-warning { margin: 10px 0; padding: 9px 11px; border: 1px solid #f1d39a; border-radius: 7px; background: #fff8e9; color: #81510b; font-size: 12px; }
+.testpoint-importer-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 13px 0 9px; color: #66746c; font-size: 11px; }
+.testpoint-importer-search { display: flex; align-items: center; gap: 7px; flex: 1 1 260px; min-height: 36px; padding: 0 10px; border: 1px solid #d7e1db; border-radius: 7px; background: #fff; color: #6f7e75; }
+.testpoint-importer-search input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; }
+.testpoint-importer-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin-left: auto; }
+.testpoint-importer-actions .button { min-height: 33px; padding-inline: 9px; font-size: 10px; }
+.testpoint-importer-list-wrap { max-height: 560px; overflow: auto; border: 1px solid #dfe7e2; border-radius: 8px; background: #fff; }
+.testpoint-importer-list { width: 100%; border-collapse: collapse; }
+.testpoint-importer-list th { position: sticky; z-index: 1; top: 0; padding: 8px 10px; background: #f1f5f3; color: #64736a; font-size: 10px; text-align: left; text-transform: uppercase; letter-spacing: .04em; }
+.testpoint-importer-list th:first-child, .testpoint-importer-list td:first-child { width: 38px; padding-inline: 10px; }
+.testpoint-importer-list th:last-child, .testpoint-importer-list td:last-child { width: 62px; text-align: center; }
+.testpoint-importer-list td { padding: 10px; border-top: 1px solid #e8eeea; vertical-align: top; }
+.testpoint-importer-question { display: grid; gap: 6px; color: #293b32; font-size: 12px; }
+.testpoint-importer-prompt { display: flex; align-items: flex-start; gap: 6px; font-size: 13px; font-weight: 650; line-height: 1.5; }
+.testpoint-importer-prompt > strong { color: #718078; flex: 0 0 auto; }
+.testpoint-importer-question ol { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 14px; margin: 0; padding: 0; list-style: none; }
+.testpoint-importer-question ol li { display: flex; align-items: flex-start; gap: 5px; min-width: 0; color: #56655c; line-height: 1.55; }
+.testpoint-importer-question ol li > span:first-child { flex: 0 0 auto; font-weight: 700; }
+.testpoint-importer-question ol li.is-correct { color: #08785b; font-weight: 650; }
+.testpoint-importer-question details { padding: 6px 8px; border-radius: 6px; background: #f5f8f6; }
+.testpoint-importer-question details summary { color: #53635a; cursor: pointer; font-size: 10px; font-weight: 700; }
+.testpoint-importer-question details p { margin: 5px 0 0; color: #58675e; font-size: 11px; line-height: 1.8; white-space: pre-line; }
+.testpoint-importer-source-link { justify-self: start; color: #08785b; font-size: 10px; text-decoration: underline; }
+.testpoint-importer-answer { display: inline-grid; width: 23px; height: 23px; place-items: center; border-radius: 50%; background: #e3f4ec; color: #08785b; font-size: 11px; font-weight: 800; }
+.testpoint-importer-pagination { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 10px; color: #68766e; font-size: 11px; }
+.testpoint-importer-pagination .button { min-height: 32px; padding-inline: 9px; font-size: 10px; }
+.testpoint-importer-empty { margin: 12px 0 0; padding: 12px; border-radius: 7px; background: #f0f5f2; color: #67776e; font-size: 12px; }
+.testpoint-importer-attribution { display: block; margin-top: 8px; color: #839087; font-size: 10px; }
+:root[data-theme="dark"] .testpoint-importer { border-color: #39483f; background: #202720; }
+:root[data-theme="dark"] .testpoint-importer-header h3,
+:root[data-theme="dark"] .testpoint-importer-question { color: #e0eae4; }
+:root[data-theme="dark"] .testpoint-importer-header p,
+:root[data-theme="dark"] .testpoint-importer-toolbar,
+:root[data-theme="dark"] .testpoint-importer-question ol li,
+:root[data-theme="dark"] .testpoint-importer-question details p { color: #aebbb3; }
+:root[data-theme="dark"] .testpoint-importer-search,
+:root[data-theme="dark"] .testpoint-importer-list-wrap { border-color: #3b443e; background: #171b19; }
+:root[data-theme="dark"] .testpoint-importer-list th { background: #252c27; color: #aebbb3; }
+:root[data-theme="dark"] .testpoint-importer-list td { border-color: #303932; }
+:root[data-theme="dark"] .testpoint-importer-question details,
+:root[data-theme="dark"] .testpoint-importer-empty { background: #252c27; }
+:root[data-theme="dark"] .testpoint-importer-question details summary { color: #c0cbc4; }
+@media (max-width: 700px) {
+  .testpoint-importer { padding: 10px; }
+  .testpoint-importer-header { flex-direction: column; }
+  .testpoint-importer-actions { margin-left: 0; }
+  .testpoint-importer-list th:last-child, .testpoint-importer-list td:last-child { width: 42px; }
+  .testpoint-importer-question ol { grid-template-columns: 1fr; }
+}
+
 /* Compact the review question pane for faster scanning. */
 .review-master-detail .review-queue-item { gap: 4px; padding: 9px 11px; }
 .review-master-detail .review-queue-prompt { font-size: 12px; line-height: 1.4; }
