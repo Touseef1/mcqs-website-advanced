@@ -7,6 +7,59 @@ export type ExternalMcq = {
   explanation: string;
 };
 
+export type TestPointTaxonomy = {
+  subjects: Array<{ name: string; slug: string; url: string }>;
+  subject?: { name: string; slug: string };
+  topics: Array<{ name: string; slug: string; url?: string; subjectSlug?: string }>;
+};
+
+const TESTPOINT_ORIGIN = "https://testpointpk.com";
+
+/** Accept only public TestPoint taxonomy and MCQ listing pages (prevents SSRF). */
+export function parseTestPointListingUrl(value: unknown): URL | null {
+  if (typeof value !== "string" || value.length > 800) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || url.hostname !== "testpointpk.com" || url.port || url.username || url.password) return null;
+    if (!/^\/(?:all-mcqs-categories|important-mcqs\/[a-z0-9-]+|subcategory-mcqs\/[a-z0-9-]+)\/?$/i.test(url.pathname)) return null;
+    for (const key of url.searchParams.keys()) if (key !== "page") return null;
+    const page = Number(url.searchParams.get("page") ?? 1);
+    if (!Number.isSafeInteger(page) || page < 1 || page > 80) return null;
+    url.hash = "";
+    return url;
+  } catch {
+    return null;
+  }
+}
+
+function slugFromUrl(path: string) {
+  return path.split("/").filter(Boolean).at(-1) ?? "";
+}
+
+export function parseTestPointTaxonomy(html: string, source: URL): TestPointTaxonomy {
+  const subjects = new Map<string, { name: string; slug: string; url: string }>();
+  const topics = new Map<string, { name: string; slug: string; url: string }>();
+  const anchorPattern = /<a\b[^>]*href\s*=\s*(["'])(.*?)\1[^>]*>([\s\S]*?)<\/a>/gi;
+  for (const match of html.matchAll(anchorPattern)) {
+    let link: URL;
+    try { link = new URL(match[2], TESTPOINT_ORIGIN); } catch { continue; }
+    if (link.hostname !== "testpointpk.com" || link.protocol !== "https:") continue;
+    const name = htmlToText(match[3]);
+    if (name.length < 2 || name.length > 160) continue;
+    const item = { name, slug: slugFromUrl(link.pathname), url: `${TESTPOINT_ORIGIN}${link.pathname}` };
+    if (/^\/important-mcqs\/[a-z0-9-]+\/?$/i.test(link.pathname)) subjects.set(item.slug, item);
+    if (/^\/subcategory-mcqs\/[a-z0-9-]+\/?$/i.test(link.pathname)) topics.set(item.slug, item);
+  }
+
+  const slug = slugFromUrl(source.pathname);
+  if (/^\/important-mcqs\//i.test(source.pathname)) {
+    const heading = html.match(/<h[1-3]\b[^>]*>([\s\S]*?)<\/h[1-3]>/i)?.[1];
+    const name = (heading ? htmlToText(heading) : slug.replace(/-/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase())).replace(/\s+mcqs?$/i, "").trim();
+    return { subjects: [], subject: { name, slug }, topics: [...topics.values()] };
+  }
+  return { subjects: [...subjects.values()], topics: [] };
+}
+
 function decodeHtml(value: string) {
   const named: Record<string, string> = {
     amp: "&", apos: "'", nbsp: " ", quot: '"', lt: "<", gt: ">",
@@ -64,7 +117,7 @@ export function parseTestPointQuestions(html: string): ExternalMcq[] {
     const explanation = htmlToText(explanationHtml
       .replace(/<h6\b[^>]*>\s*Explanation\s*<\/h6>/i, "")
       .replace(/Last\s+(?:verified|updated|update)\s+[^<\n]*/gi, ""), true);
-    const sourceUrl = new URL(link[2], "https://testpointpk.com");
+    const sourceUrl = new URL(link[2], TESTPOINT_ORIGIN);
     if (sourceUrl.hostname !== "testpointpk.com") continue;
     results.push({
       sourceId: sourceUrl.pathname.split("/").filter(Boolean)[1] ?? sourceUrl.pathname,

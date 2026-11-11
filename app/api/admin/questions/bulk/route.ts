@@ -93,12 +93,14 @@ export async function POST(request: Request) {
   if (action === "import") {
     if (!requirePermission(principal, "mcq.create")) return error("Your role cannot add questions.", 403);
     const topicId = Number(body?.topicId);
-    const paperId = body?.paperId === null || body?.paperId === undefined || body?.paperId === "" ? null : Number(body.paperId);
+    const legacyPaperId = body?.paperId === null || body?.paperId === undefined || body?.paperId === "" ? null : Number(body.paperId);
+    const requestedPaperIds = Array.isArray(body?.paperIds) ? body.paperIds.map(Number) : legacyPaperId === null ? [] : [legacyPaperId];
+    const paperIds = [...new Set(requestedPaperIds)].sort((a, b) => a - b);
     const sourceNote = typeof body?.sourceNote === "string" ? body.sourceNote.trim() : "";
     const difficulty = body?.difficulty === "easy" || body?.difficulty === "hard" ? body.difficulty : "medium";
     const inputs = Array.isArray(body?.questions) ? body.questions : [];
-    if (!Number.isSafeInteger(topicId) || topicId < 1 || sourceNote.length < 4 || sourceNote.length > 500 || inputs.length < 1 || inputs.length > 200 || (paperId !== null && (!Number.isSafeInteger(paperId) || paperId < 1))) return error("Choose a category, source reference, and 1–200 valid MCQs.");
-    if (paperId !== null && !requirePermission(principal, "paper.add_questions")) return error("Your role cannot add questions to past papers.", 403);
+    if (!Number.isSafeInteger(topicId) || topicId < 1 || sourceNote.length < 4 || sourceNote.length > 500 || inputs.length < 1 || inputs.length > 200 || paperIds.length > 200 || paperIds.some((id) => !Number.isSafeInteger(id) || id < 1)) return error("Choose a category, source reference, 1–200 valid MCQs, and valid paper selections.");
+    if (paperIds.length && !requirePermission(principal, "paper.add_questions")) return error("Your role cannot add questions to past papers.", 403);
     const parsed = inputs.map(parseInputQuestion);
     if (parsed.some((row) => !row)) return NextResponse.json({ error: "Bulk import validation failed; no MCQs were saved.", results: parsed.map((row, index) => ({ row: index + 1, ok: Boolean(row), ...(row ? {} : { error: "Question, four distinct options, correct answer, or explanation is invalid." }) })) }, { status: 400 });
     const status = "draft" as const;
@@ -116,11 +118,11 @@ export async function POST(request: Request) {
         await connection.rollback();
         return error("Choose an active category. Published MCQs need a published subject and topic.");
       }
-      if (paperId !== null) {
+      for (const paperId of paperIds) {
         const [paper] = await connection.execute<Array<RowDataPacket & { id: number; status: string }>>("SELECT id, status FROM papers WHERE id = ? FOR UPDATE", [paperId]);
         if (!paper[0] || paper[0].status === "archived") {
           await connection.rollback();
-          return error("Choose an active past paper.");
+          return error(`Paper #${paperId} is missing or archived. No MCQs were imported.`);
         }
       }
       for (const item of parsed as InputQuestion[]) {
@@ -136,11 +138,11 @@ export async function POST(request: Request) {
           await connection.execute("INSERT INTO choices (question_id, label, choice_text) VALUES (?, ?, ?)", [questionId, labels[index], item.choices[index]]);
         }
       }
-      if (paperId !== null) {
+      for (const paperId of paperIds) {
         const linked = await appendToPaper(connection, paperId, createdIds);
         if (linked.error) {
           await connection.rollback();
-          return error(linked.error);
+          return error(`${linked.error} No MCQs were imported.`);
         }
       }
       await connection.commit();
@@ -151,9 +153,9 @@ export async function POST(request: Request) {
     } finally {
       connection.release();
     }
-    await auditAdmin(principal, request, "bulk_create", "question", null, null, { questionIds: createdIds, topicId, paperId });
+    await auditAdmin(principal, request, "bulk_create", "question", null, null, { questionIds: createdIds, topicId, paperIds });
     refreshContent();
-    return NextResponse.json({ ok: true, ids: createdIds, count: createdIds.length, results: createdIds.map((id, index) => ({ row: index + 1, id, ok: true })) });
+    return NextResponse.json({ ok: true, ids: createdIds, count: createdIds.length, paperIds, results: createdIds.map((id, index) => ({ row: index + 1, id, ok: true })) });
   }
 
   const ids = parseIds(body?.ids);

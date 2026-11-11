@@ -20,7 +20,7 @@ type Choice = { label: string; text: string; imageUrl?: string | null };
 type Question = { id: number; topicId: number; topicName: string; subjectName: string; prompt: string; questionImageUrl?: string | null; explanation: string; sourceNote: string; correctChoice: string; difficulty: "easy" | "medium" | "hard"; language: "en" | "ur"; authorName?: string; status: Status; version: number; reviewNote?: string | null; createdBy?: number | string; paperIds: number[]; choices: Choice[] };
 type DraftQuestion = { prompt: string; choices: string[]; correctChoice: string; explanation: string; language: "en" | "ur"; questionImageUrl?: string | null; choiceImageUrls?: Array<string | null> };
 type PreviewRow = DraftQuestion & { rowNumber: number; errors: string[] };
-type Props = { topics: Topic[]; papers: Paper[]; canManagePapers: boolean; canAddQuestionsToPapers: boolean; canQuickCreatePaper: boolean; canPublish: boolean; canDirectPublish: boolean; canDelete: boolean; canCreateMcqs: boolean; canReviewMcqs: boolean; canEditOwnMcqs: boolean; canEditAnyMcqs: boolean; currentUserId: string; initialPaperId: number | null; initialSearch?: string; initialStatus?: string; startInBank?: boolean; onUpdated: () => Promise<void> };
+type Props = { topics: Topic[]; papers: Paper[]; canManagePapers: boolean; canAddQuestionsToPapers: boolean; canQuickCreatePaper: boolean; canPublish: boolean; canDirectPublish: boolean; isSuperAdmin: boolean; canDelete: boolean; canCreateMcqs: boolean; canReviewMcqs: boolean; canEditOwnMcqs: boolean; canEditAnyMcqs: boolean; currentUserId: string; initialPaperId: number | null; initialSearch?: string; initialStatus?: string; startInBank?: boolean; onUpdated: () => Promise<void> };
 
 const emptyDraft: DraftQuestion = { prompt: "", choices: ["", "", "", ""], correctChoice: "", explanation: "", language: "en", questionImageUrl: null, choiceImageUrls: [null, null, null, null] };
 const questionLabels = ["A", "B", "C", "D"] as const;
@@ -211,7 +211,7 @@ function SearchPicker({ id, label, value, options, placeholder, onChange, action
   </div>;
 }
 
-export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAddQuestionsToPapers, canQuickCreatePaper, canPublish, canDirectPublish, canDelete, canCreateMcqs, canReviewMcqs, canEditOwnMcqs, canEditAnyMcqs, currentUserId, initialPaperId, initialSearch = "", initialStatus = "all", startInBank = false, onUpdated }: Props) {
+export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAddQuestionsToPapers, canQuickCreatePaper, canPublish, canDirectPublish, isSuperAdmin, canDelete, canCreateMcqs, canReviewMcqs, canEditOwnMcqs, canEditAnyMcqs, currentUserId, initialPaperId, initialSearch = "", initialStatus = "all", startInBank = false, onUpdated }: Props) {
   const [mode, setMode] = useState<"quick" | "bulk" | "bank">(startInBank || !canCreateMcqs ? "bank" : "quick");
   const [paperOptions, setPaperOptions] = useState(papers);
   const [contextRestored, setContextRestored] = useState(false);
@@ -254,6 +254,7 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
   const [pasteText, setPasteText] = useState("");
   const [externalImporterOpen, setExternalImporterOpen] = useState(false);
   const [bulkRows, setBulkRows] = useState<PreviewRow[]>([]);
+  const [bulkPaperIds, setBulkPaperIds] = useState<number[] | null>(null);
   const [csvFileName, setCsvFileName] = useState("");
   const [newPaperOpen, setNewPaperOpen] = useState(false);
   const [newPaperBusy, setNewPaperBusy] = useState(false);
@@ -587,21 +588,21 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
     setBusy(true); setError("");
     try {
       const result = await adminRequest<{ ids: number[]; count: number }>("/api/admin/questions/bulk", "POST", {
-        action: "import", topicId: Number(topicId), paperId: paperId ? Number(paperId) : null, difficulty, sourceNote: sourceNote.trim(), status: "draft",
+        action: "import", topicId: Number(topicId), paperIds: bulkPaperIds ?? (paperId ? [Number(paperId)] : []), difficulty, sourceNote: sourceNote.trim(), status: "draft",
         questions: validRows.map(({ prompt, choices, correctChoice, explanation }) => ({ prompt, choices, correctChoice, explanation })),
       });
       const topic = topics.find((item) => item.id === Number(topicId));
       const imported = validRows.map((row, index): Question => ({
         id: result.ids[index], topicId: Number(topicId), topicName: topic?.name ?? "Topic", subjectName: topic?.subject_name ?? "Subject",
         prompt: row.prompt.trim(), explanation: row.explanation.trim(), sourceNote: sourceNote.trim(), correctChoice: row.correctChoice,
-        difficulty, language: detectQuestionLanguage([row.prompt, ...row.choices, row.explanation]), status: "draft", paperIds: paperId ? [Number(paperId)] : [],
+        difficulty, language: detectQuestionLanguage([row.prompt, ...row.choices, row.explanation]), status: "draft", paperIds: bulkPaperIds ?? (paperId ? [Number(paperId)] : []),
         version: 1,
         choices: row.choices.map((text, choiceIndex) => ({ label: questionLabels[choiceIndex], text: text.trim() })),
       }));
       const updatedSession = [...imported.reverse(), ...sessionQuestions];
       const nextCount = sessionCount + result.count;
       setSessionQuestions(updatedSession); setSessionCount(nextCount); rememberSession(updatedSession.map((item) => item.id), nextCount);
-      setBulkRows([]); setPasteText(""); setCsvFileName("");
+      setBulkRows([]); setPasteText(""); setCsvFileName(""); setBulkPaperIds(null);
       toastNotify.success(`Imported ${result.count} MCQs.`);
       await onUpdated();
     } catch (cause) { const message = getErrorMessage(cause, "Bulk import failed; no MCQs were saved."); setError(message); toastNotify.error(message); }
@@ -681,8 +682,8 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
     {mode === "bulk" && canCreateMcqs && <section className="admin-panel mcq-bulk-panel">
       <div className="admin-panel-heading"><div><span className="eyebrow">BULK ENTRY</span><h3>Paste multiple MCQs or upload a CSV</h3><p>Paste blank-line-separated question blocks, or use CSV columns: question, A, B, C, D, answer, explanation.</p></div></div>
       <p className="form-hint">Question language is detected automatically for each MCQ.</p>
-      <button type="button" className="button button-light testpoint-importer-toggle" aria-expanded={externalImporterOpen} onClick={() => setExternalImporterOpen((open) => !open)}>{externalImporterOpen ? "Close TestPoint importer" : "Import from TestPoint Urdu Adab"}</button>
-      {externalImporterOpen && <TestPointMcqImporter onSendToBulk={(text) => { setPasteText(text); setBulkRows([]); setCsvFileName(""); setExternalImporterOpen(false); toastNotify.success("Selected MCQs and explanations were added to the bulk editor. Review them before importing."); }} />}
+      {isSuperAdmin && <><button type="button" className="button button-light testpoint-importer-toggle" aria-expanded={externalImporterOpen} onClick={() => setExternalImporterOpen((open) => !open)}>{externalImporterOpen ? "Close TestPoint importer" : "Import from TestPoint"}</button>
+      {externalImporterOpen && <TestPointMcqImporter papers={paperOptions.map(({ id, title, status }) => ({ id, title, status }))} initialPaperIds={paperId ? [Number(paperId)] : []} onSendToBulk={(text, selectedPaperIds) => { setBulkPaperIds(selectedPaperIds); setPasteText(text); setBulkRows([]); setCsvFileName(""); setExternalImporterOpen(false); toastNotify.success("Selected MCQs and explanations were added to the bulk editor. Review them before importing."); }} />}</>}
       <label className="mcq-csv-upload" htmlFor="mcq-csv-file">Upload CSV <input id="mcq-csv-file" type="file" accept=".csv,text/csv" onChange={(event) => void handleCsvFile(event)} /></label>
       {csvFileName && <p className="admin-helper">Loaded {csvFileName}. You can also edit the parsed source below.</p>}
       <textarea className={`mcq-bulk-textarea ${containsUrduScript(pasteText) ? "urdu-aware-input" : ""}`} lang={containsUrduScript(pasteText) ? "ur" : "en"} dir="auto" value={pasteText} onChange={(event) => setPasteText(event.target.value)} rows={12} placeholder={`Q: Which word is a noun?\nA) Quickly\nB) Honest\nC) Teacher\nD) Run\nAnswer: C\nExplanation: A teacher is a person.\n\nQ: ...`} />
