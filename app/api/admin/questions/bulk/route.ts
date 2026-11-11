@@ -53,6 +53,22 @@ function parseIds(value: unknown) {
   return ids.length && ids.every((id) => Number.isSafeInteger(id) && id > 0) ? ids : null;
 }
 
+function summarizeImportDatabaseError(cause: unknown) {
+  const failure = cause && typeof cause === "object" ? cause as { code?: unknown; sqlMessage?: unknown; message?: unknown } : {};
+  const code = typeof failure.code === "string" ? failure.code : "UNKNOWN_DATABASE_ERROR";
+  const detail = typeof failure.sqlMessage === "string" ? failure.sqlMessage : typeof failure.message === "string" ? failure.message : "";
+  if (code === "ER_BAD_FIELD_ERROR") {
+    const column = detail.match(/Unknown column ['`]([^'`]+)['`]/i)?.[1] ?? "a required column";
+    const migration = /\b(language|idx_questions_language_status)\b/i.test(column) ? " Apply migrations 011 and 012." : /\b(created_by|updated_by)\b/i.test(column) ? " Apply migration 006." : /\b(version|current_revision_id)\b/i.test(column) ? " Apply migration 008." : " Apply any missing migrations listed in docs/MIGRATIONS.md.";
+    return `The database is missing ${column}.${migration}`;
+  }
+  if (code === "ER_NO_SUCH_TABLE") return "A required table is missing. Apply the outstanding migrations listed in docs/MIGRATIONS.md.";
+  if (code === "ER_DUP_ENTRY") return "A database uniqueness rule rejected a row. Check for an existing duplicate MCQ or paper link.";
+  if (code === "ER_DATA_TOO_LONG" || code === "WARN_DATA_TRUNCATED") return "A field exceeds the limit allowed by the database schema. Check the question and option lengths.";
+  if (code === "ER_NO_REFERENCED_ROW_2" || code === "ER_ROW_IS_REFERENCED_2") return "A selected category or linked record no longer exists. Refresh the page and retry.";
+  return `A database error occurred (${code}). Check the server terminal for details.`;
+}
+
 async function appendToPaper(connection: import("mysql2/promise").PoolConnection, paperId: number, questionIds: number[]) {
   const [paper] = await connection.execute<Array<RowDataPacket & { id: number; status: string }>>(
     "SELECT id, status FROM papers WHERE id = ? FOR UPDATE", [paperId],
@@ -160,8 +176,19 @@ export async function POST(request: Request) {
       await connection.commit();
     } catch (cause) {
       await connection.rollback();
-      console.error("Bulk MCQ import failed", cause);
-      return NextResponse.json({ error: "Bulk import rolled back; no rows were saved because the database transaction failed.", results: rowResults.map((item) => ({ ...item, ok: false, error: "Rolled back because the database transaction failed." })) }, { status: 500 });
+      const failure = cause && typeof cause === "object" ? cause as { code?: unknown; errno?: unknown; sqlMessage?: unknown } : {};
+      console.error("Bulk MCQ import failed", { code: failure.code, errno: failure.errno, sqlMessage: failure.sqlMessage });
+      const detail = summarizeImportDatabaseError(cause);
+      return NextResponse.json({
+        error: `Bulk import rolled back; no rows were saved. ${detail}`,
+        results: rowResults.map((item) => ({
+          ...item,
+          ok: false,
+          error: item.error === "Not imported because the database transaction did not complete."
+            ? `Rolled back because the database transaction failed. ${detail}`
+            : item.error,
+        })),
+      }, { status: 500 });
     } finally {
       connection.release();
     }
