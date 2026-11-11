@@ -31,7 +31,7 @@ function htmlToText(value: string, preserveParagraphs = false) {
 
 export function getTestPointTotalPages(html: string) {
   const pageNumbers = [...html.matchAll(/(?:\?|&)page=(\d+)/g)].map((match) => Number(match[1]));
-  return Math.max(1, Math.min(80, ...[Math.max(1, ...pageNumbers)]));
+  return Math.max(1, Math.min(80, Math.max(1, ...pageNumbers)));
 }
 
 export function parseTestPointQuestions(html: string): ExternalMcq[] {
@@ -52,13 +52,20 @@ export function parseTestPointQuestions(html: string): ExternalMcq[] {
     const optionMatches = [...optionsList.matchAll(/<li\b([^>]*)>([\s\S]*?)<\/li>/gi)];
     if (optionMatches.length !== 4) continue;
     const choices = optionMatches.map((option) => htmlToText(option[2])) as [string, string, string, string];
-    const correctIndex = optionMatches.findIndex((option) => /(?:^|\s)correct(?:\s|$)/i.test(option[1]));
-    const prompt = htmlToText(link[3]);
+    const correctIndex = optionMatches.findIndex((option) => /\bcorrect\b/i.test(option[1]));
+    const optionsStart = block.search(/<ol\b/i);
+    const secondaryPrompts = [...block.slice(0, optionsStart).matchAll(/<h[56]\b[^>]*>([\s\S]*?)<\/h[56]>/gi)]
+      .map((match) => htmlToText(match[1]))
+      .filter((text) => text && !/^explanation$/i.test(text));
+    const prompt = [htmlToText(link[3]), ...secondaryPrompts].filter(Boolean).join(" / ");
     if (!prompt || choices.some((choice) => !choice) || correctIndex < 0) continue;
 
     const explanationHtml = block.match(/<div\b(?=[^>]*\bclass\s*=\s*(["'])[^"']*\bquestion-explanation\b[^"']*\1)[^>]*>([\s\S]*?)<\/div>/i)?.[2] ?? "";
-    const explanation = htmlToText(explanationHtml.replace(/<h6\b[^>]*>\s*Explanation\s*<\/h6>/i, "").replace(/Last verified on[^<\n]*/gi, ""), true);
+    const explanation = htmlToText(explanationHtml
+      .replace(/<h6\b[^>]*>\s*Explanation\s*<\/h6>/i, "")
+      .replace(/Last\s+(?:verified|updated|update)\s+[^<\n]*/gi, ""), true);
     const sourceUrl = new URL(link[2], "https://testpointpk.com");
+    if (sourceUrl.hostname !== "testpointpk.com") continue;
     results.push({
       sourceId: sourceUrl.pathname.split("/").filter(Boolean)[1] ?? sourceUrl.pathname,
       sourceUrl: sourceUrl.toString(),
