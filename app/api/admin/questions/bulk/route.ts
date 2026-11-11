@@ -10,7 +10,7 @@ import { auditAdmin, csrfFailure } from "@/lib/admin-security";
 import { detectQuestionLanguage } from "@/lib/language";
 import { richTextToPlainText, sanitizeRichText } from "@/lib/rich-text";
 const labels = ["A", "B", "C", "D"] as const;
-type InputQuestion = { prompt: string; choices: string[]; correctChoice: string; explanation: string };
+type InputQuestion = { prompt: string; choices: string[]; correctChoice: string; explanation: string; rowNumber: number };
 
 function error(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
@@ -27,16 +27,24 @@ function refreshContent() {
   revalidateTag("papers", { expire: 0 });
 }
 
-function parseInputQuestion(value: unknown): InputQuestion | null {
-  if (!value || typeof value !== "object") return null;
+function parseInputQuestion(value: unknown, index: number): { question: InputQuestion | null; rowNumber: number; error?: string } {
+  const suppliedRowNumber = value && typeof value === "object" ? Number((value as Record<string, unknown>).rowNumber) : NaN;
+  const rowNumber = Number.isSafeInteger(suppliedRowNumber) && suppliedRowNumber > 0 ? suppliedRowNumber : index + 1;
+  if (!value || typeof value !== "object") return { question: null, rowNumber, error: "MCQ row is invalid." };
   const row = value as Record<string, unknown>;
   const prompt = typeof row.prompt === "string" ? row.prompt.trim() : "";
   const choices = Array.isArray(row.choices) ? row.choices.map((choice) => typeof choice === "string" ? choice.trim() : "") : [];
   const correctChoice = typeof row.correctChoice === "string" ? row.correctChoice : "";
   const explanation = typeof row.explanation === "string" ? sanitizeRichText(row.explanation.trim()) : "";
   const normalized = choices.map((choice) => choice.normalize("NFKC").replace(/\s+/g, " ").toLocaleLowerCase());
-  if (prompt.length < 8 || prompt.length > 1500 || choices.length !== 4 || choices.some((choice) => !choice || choice.length > 800) || new Set(normalized).size !== 4 || !labels.includes(correctChoice as typeof labels[number]) || richTextToPlainText(explanation).length > 3000) return null;
-  return { prompt, choices, correctChoice, explanation };
+  let validationError: string | undefined;
+  if (prompt.length < 8 || prompt.length > 1500) validationError = "Question text must be between 8 and 1,500 characters.";
+  else if (choices.length !== 4 || choices.some((choice) => !choice || choice.length > 800)) validationError = "Add four non-empty options, each no longer than 800 characters.";
+  else if (new Set(normalized).size !== 4) validationError = "Options must be different; this row contains duplicate options.";
+  else if (!labels.includes(correctChoice as typeof labels[number])) validationError = "Choose the correct answer (A, B, C, or D).";
+  else if (richTextToPlainText(explanation).length > 3000) validationError = "Explanation must be no longer than 3,000 characters.";
+  if (validationError) return { question: null, rowNumber, error: validationError };
+  return { question: { prompt, choices, correctChoice, explanation, rowNumber }, rowNumber };
 }
 
 function parseIds(value: unknown) {
@@ -102,7 +110,11 @@ export async function POST(request: Request) {
     if (!Number.isSafeInteger(topicId) || topicId < 1 || sourceNote.length < 4 || sourceNote.length > 500 || inputs.length < 1 || inputs.length > 200 || paperIds.length > 200 || paperIds.some((id) => !Number.isSafeInteger(id) || id < 1)) return error("Choose a category, source reference, 1–200 valid MCQs, and valid paper selections.");
     if (paperIds.length && !requirePermission(principal, "paper.add_questions")) return error("Your role cannot add questions to past papers.", 403);
     const parsed = inputs.map(parseInputQuestion);
-    if (parsed.some((row) => !row)) return NextResponse.json({ error: "Bulk import validation failed; no MCQs were saved.", results: parsed.map((row, index) => ({ row: index + 1, ok: Boolean(row), ...(row ? {} : { error: "Question, four distinct options, correct answer, or explanation is invalid." }) })) }, { status: 400 });
+    const validRows = parsed.flatMap((item) => item.question ? [item.question] : []);
+    const rowResults: Array<{ row: number; ok: boolean; error?: string }> = parsed.map((item) => item.question
+      ? { row: item.rowNumber, ok: false, error: "Not imported because the database transaction did not complete." }
+      : { row: item.rowNumber, ok: false, error: item.error ?? "This MCQ is invalid." });
+    if (!validRows.length) return NextResponse.json({ ok: true, ids: [], count: 0, skipped: rowResults.length, paperIds, results: rowResults });
     const status = "draft" as const;
     const connection = await db.getConnection();
     const createdIds: number[] = [];
@@ -125,7 +137,7 @@ export async function POST(request: Request) {
           return error(`Paper #${paperId} is missing or archived. No MCQs were imported.`);
         }
       }
-      for (const item of parsed as InputQuestion[]) {
+      for (const item of validRows) {
         const language = detectQuestionLanguage([item.prompt, ...item.choices, item.explanation]);
         const [insert] = await connection.execute(
           `INSERT INTO questions (topic_id, question_text, explanation, source_note, correct_choice, difficulty, language, status, created_by, updated_by)
@@ -149,13 +161,19 @@ export async function POST(request: Request) {
     } catch (cause) {
       await connection.rollback();
       console.error("Bulk MCQ import failed", cause);
-    return NextResponse.json({ error: "Bulk import rolled back; no rows were saved.", results: inputs.map((_, index) => ({ row: index + 1, ok: false, error: "Rolled back because the transaction failed." })) }, { status: 500 });
+      return NextResponse.json({ error: "Bulk import rolled back; no rows were saved because the database transaction failed.", results: rowResults.map((item) => ({ ...item, ok: false, error: "Rolled back because the database transaction failed." })) }, { status: 500 });
     } finally {
       connection.release();
     }
-    await auditAdmin(principal, request, "bulk_create", "question", null, null, { questionIds: createdIds, topicId, paperIds });
+    let createdIndex = 0;
+    const results = parsed.map((item) => {
+      if (!item.question) return { row: item.rowNumber, ok: false, error: item.error ?? "This MCQ is invalid." };
+      const id = createdIds[createdIndex++];
+      return { row: item.rowNumber, id, ok: true };
+    });
+    await auditAdmin(principal, request, "bulk_create", "question", null, null, { questionIds: createdIds, skippedRows: results.filter((item) => !item.ok).map((item) => item.row), topicId, paperIds });
     refreshContent();
-    return NextResponse.json({ ok: true, ids: createdIds, count: createdIds.length, paperIds, results: createdIds.map((id, index) => ({ row: index + 1, id, ok: true })) });
+    return NextResponse.json({ ok: true, ids: createdIds, count: createdIds.length, skipped: results.filter((item) => !item.ok).length, paperIds, results });
   }
 
   const ids = parseIds(body?.ids);

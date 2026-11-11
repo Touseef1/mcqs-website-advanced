@@ -581,29 +581,42 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
   }
 
   async function importRows() {
-    const validRows = bulkRows.filter((row) => row.errors.length === 0);
-    if (!validRows.length) { setError("There are no valid MCQs to import."); return; }
+    if (!bulkRows.length) { setError("Add MCQs to the preview first."); return; }
     if (!topicId || sourceNote.trim().length < 4) { setError("Choose a category and enter a source note in the context bar first."); return; }
-    if (validRows.length > 100) { setError("Import up to 100 MCQs at a time."); return; }
+    if (bulkRows.length > 100) { setError("Import up to 100 MCQs at a time."); return; }
     setBusy(true); setError("");
     try {
-      const result = await adminRequest<{ ids: number[]; count: number }>("/api/admin/questions/bulk", "POST", {
+      const result = await adminRequest<{ ids: number[]; count: number; skipped: number; results: Array<{ row: number; id?: number; ok: boolean; error?: string }> }>("/api/admin/questions/bulk", "POST", {
         action: "import", topicId: Number(topicId), paperIds: bulkPaperIds ?? (paperId ? [Number(paperId)] : []), difficulty, sourceNote: sourceNote.trim(), status: "draft",
-        questions: validRows.map(({ prompt, choices, correctChoice, explanation }) => ({ prompt, choices, correctChoice, explanation })),
+        questions: bulkRows.map(({ prompt, choices, correctChoice, explanation, rowNumber }) => ({ prompt, choices, correctChoice, explanation, rowNumber })),
       });
       const topic = topics.find((item) => item.id === Number(topicId));
-      const imported = validRows.map((row, index): Question => ({
-        id: result.ids[index], topicId: Number(topicId), topicName: topic?.name ?? "Topic", subjectName: topic?.subject_name ?? "Subject",
-        prompt: row.prompt.trim(), explanation: row.explanation.trim(), sourceNote: sourceNote.trim(), correctChoice: row.correctChoice,
-        difficulty, language: detectQuestionLanguage([row.prompt, ...row.choices, row.explanation]), status: "draft", paperIds: bulkPaperIds ?? (paperId ? [Number(paperId)] : []),
-        version: 1,
-        choices: row.choices.map((text, choiceIndex) => ({ label: questionLabels[choiceIndex], text: text.trim() })),
-      }));
+      const imported = result.results.flatMap((item): Question[] => {
+        if (!item.ok || !item.id) return [];
+        const row = bulkRows.find((candidate) => candidate.rowNumber === item.row);
+        if (!row) return [];
+        return [{
+          id: item.id, topicId: Number(topicId), topicName: topic?.name ?? "Topic", subjectName: topic?.subject_name ?? "Subject",
+          prompt: row.prompt.trim(), explanation: row.explanation.trim(), sourceNote: sourceNote.trim(), correctChoice: row.correctChoice,
+          difficulty, language: detectQuestionLanguage([row.prompt, ...row.choices, row.explanation]), status: "draft", paperIds: bulkPaperIds ?? (paperId ? [Number(paperId)] : []),
+          version: 1,
+          choices: row.choices.map((text, choiceIndex) => ({ label: questionLabels[choiceIndex], text: text.trim() })),
+        }];
+      });
       const updatedSession = [...imported.reverse(), ...sessionQuestions];
       const nextCount = sessionCount + result.count;
       setSessionQuestions(updatedSession); setSessionCount(nextCount); rememberSession(updatedSession.map((item) => item.id), nextCount);
-      setBulkRows([]); setPasteText(""); setCsvFileName(""); setBulkPaperIds(null);
-      toastNotify.success(`Imported ${result.count} MCQs.`);
+      const failed = result.results.filter((item) => !item.ok);
+      const remainingRows = failed.flatMap((item) => {
+        const row = bulkRows.find((candidate) => candidate.rowNumber === item.row);
+        return row ? [{ ...row, errors: [item.error || "This MCQ could not be imported."] }] : [];
+      });
+      setBulkRows(remainingRows);
+      setPasteText(remainingRows.map((row) => `Q: ${row.prompt}\nA) ${row.choices[0]}\nB) ${row.choices[1]}\nC) ${row.choices[2]}\nD) ${row.choices[3]}\nAnswer: ${row.correctChoice}${row.explanation ? `\nExplanation: ${row.explanation}` : ""}`).join("\n\n"));
+      setCsvFileName("");
+      if (!remainingRows.length) setBulkPaperIds(null);
+      if (remainingRows.length) toastNotify.warning(`Imported ${result.count} MCQs. ${remainingRows.length} row${remainingRows.length === 1 ? "" : "s"} skipped; review the highlighted errors and retry.`);
+      else toastNotify.success(`Imported ${result.count} MCQs.`);
       await onUpdated();
     } catch (cause) { const message = getErrorMessage(cause, "Bulk import failed; no MCQs were saved."); setError(message); toastNotify.error(message); }
     finally { setBusy(false); }
