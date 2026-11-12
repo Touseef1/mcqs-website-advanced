@@ -6,12 +6,13 @@ import dynamic from "next/dynamic";
 import { LocalizedText } from "@/components/LocalizedText";
 import { RichText } from "@/components/RichText";
 import { TestPointMcqImporter } from "@/components/TestPointMcqImporter";
-import { Archive, Bookmark, ChevronLeft, ChevronRight, Eye, Filter, Pencil, Plus, Search, SlidersHorizontal, Upload } from "lucide-react";
+import { Archive, Bookmark, Eye, Filter, Pencil, Plus, Search, SlidersHorizontal, Upload } from "lucide-react";
 import { containsUrduScript, detectQuestionLanguage } from "@/lib/language";
 import { useConfirmModal } from "@/components/ConfirmModal";
 import { ApiResponseError, ConfirmationCancelledError, getErrorMessage, isConfirmationCancelled, parseApiResponse } from "@/lib/error-message";
 import { notify as toastNotify } from "@/lib/toast";
 import { richTextToPlainText } from "@/lib/rich-text";
+import { SitePagination } from "@/components/SitePagination";
 
 type Status = "draft" | "in_review" | "approved" | "published" | "rejected" | "archived";
 type Topic = { id: number; subject_id: number; subject_name: string; name: string; status: Status };
@@ -25,7 +26,6 @@ type Props = { topics: Topic[]; papers: Paper[]; canManagePapers: boolean; canAd
 
 const emptyDraft: DraftQuestion = { prompt: "", choices: ["", "", "", ""], correctChoice: "", explanation: "", language: "en", questionImageUrl: null, choiceImageUrls: [null, null, null, null] };
 const questionLabels = ["A", "B", "C", "D"] as const;
-const BANK_PAGE_SIZE = 20;
 const contextStorageKey = "mcqpath:question-entry-context";
 const sessionIdsKey = "mcqpath:question-entry-session-ids";
 const sessionCountKey = "mcqpath:question-entry-session-count";
@@ -247,6 +247,7 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
   const [savedViews, setSavedViews] = useState<Array<{ name: string; status: string; topic: string; author: string; source: string; language: string }>>([]);
   const [savedViewName, setSavedViewName] = useState("");
   const [bankPage, setBankPage] = useState(1);
+  const [bankPageSize, setBankPageSize] = useState(25);
   const [bankTotal, setBankTotal] = useState(0);
   const [bankLoading, setBankLoading] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -281,7 +282,7 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
 
   const topicOptions = useMemo(() => topics.filter((topic) => topic.status !== "archived").map((topic) => ({ value: String(topic.id), label: `${topic.subject_name} › ${topic.name}`, meta: topic.status })), [topics]);
   const paperPickerOptions = useMemo(() => paperOptions.filter((paper) => paper.status !== "archived").map((paper) => ({ value: String(paper.id), label: paper.title, meta: `${paper.examName} · ${paper.year} · ${paper.status}` })), [paperOptions]);
-  const bankPages = Math.max(1, Math.ceil(bankTotal / BANK_PAGE_SIZE));
+  const bankPages = Math.max(1, Math.ceil(bankTotal / bankPageSize));
   const reviewQueueView = canReviewMcqs && ["in_review", "approved", "rejected"].includes(bankStatus);
   const reviewFilterCount = [bankAuthor.trim(), bankSource.trim(), bankLanguage].filter(Boolean).length;
 
@@ -365,7 +366,7 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
 
   const loadBank = useCallback(async () => {
     setBankLoading(true);
-    const params = new URLSearchParams({ search: bankSearch, page: String(bankPage), pageSize: String(BANK_PAGE_SIZE) });
+    const params = new URLSearchParams({ search: bankSearch, page: String(bankPage), pageSize: String(bankPageSize) });
     if (bankTopic) params.set("topicId", bankTopic);
     if (bankAuthor) params.set("author", bankAuthor);
     if (bankSource) params.set("source", bankSource);
@@ -379,7 +380,7 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
       const message = getErrorMessage(cause, "Could not load the MCQ bank.");
       setError(message); toastNotify.error(message);
     } finally { setBankLoading(false); }
-  }, [bankSearch, bankPage, bankTopic, bankStatus, bankAuthor, bankSource, bankLanguage]);
+  }, [bankSearch, bankPage, bankPageSize, bankTopic, bankStatus, bankAuthor, bankSource, bankLanguage]);
 
   useEffect(() => {
     if (mode !== "bank") return;
@@ -767,7 +768,7 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
       </div>}
       {!reviewQueueView && selectedIds.length > 0 && <div className="mcq-bulk-toolbar"><strong>{selectedIds.length} selected</strong>{(canEditAnyMcqs || canEditOwnMcqs) && <div className="mcq-bulk-control"><select aria-label="Bulk change category" value={bulkTopicId} onChange={(event) => setBulkTopicId(event.target.value)}><option value="">Choose category</option>{topicOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select><button type="button" className="button button-light" disabled={busy || !bulkTopicId} onClick={() => void runBulkAction("change-category")}>Change category</button></div>}{canCreateMcqs && <button type="button" className="button button-light" disabled={busy} onClick={() => void runBulkAction("submit-review")}>Submit for review</button>}{canPublish && <button type="button" className="button button-primary" disabled={busy} onClick={() => void runBulkAction("publish")}><Upload size={14} aria-hidden="true" />Publish</button>}{canDelete && <button type="button" className="button button-light" disabled={busy} onClick={() => void runBulkAction("archive")}>Archive</button>}<button type="button" className="text-link" onClick={() => setSelectedIds([])}>Clear</button></div>}
       {bankLoading ? <p className="loading-panel">Searching MCQs…</p> : reviewQueueView ? <ReviewQueuePane questions={bankQuestions} total={bankTotal} note={reviewNote} setNote={setReviewNote} busy={busy} error={error} status={bankStatus} onDecide={reviewCurrentQuestion} onStatusChange={(status) => { setBankStatus(status); setBankPage(1); }} /> : <div className="mcq-bank-table-wrap"><table className={`mcq-bank-table mcq-bank-table-${bankDensity}`}><thead><tr><th><input type="checkbox" aria-label="Select all MCQs on this page" checked={bankQuestions.length > 0 && bankQuestions.every((item) => selectedIds.includes(item.id))} onChange={(event) => setSelectedIds((current) => event.target.checked ? [...new Set([...current, ...bankQuestions.map((item) => item.id)])] : current.filter((id) => !bankQuestions.some((item) => item.id === id)))} /></th><th>Question</th><th>Category</th><th>Difficulty</th><th>Status</th><th>Actions</th></tr></thead><tbody>{bankQuestions.map((question) => <tr key={question.id}><td><input type="checkbox" aria-label={`Select MCQ ${question.id}`} checked={selectedIds.includes(question.id)} onChange={(event) => toggleSelected(question.id, event.target.checked)} /></td><td><div className="mcq-bank-question-cell"><span className="mcq-bank-question-id">#{question.id}</span><div className="mcq-bank-question-copy"><strong><LocalizedText>{question.prompt}</LocalizedText></strong><small>{question.sourceNote} · {question.authorName ?? "Unknown staff"} · {question.language === "ur" ? "Urdu" : "English"}</small></div></div>{question.questionImageUrl && <Image className="mcq-bank-thumb" src={question.questionImageUrl} alt="Question image" width={72} height={48} unoptimized />}{question.status === "rejected" && <small className="form-error">Review: {question.reviewNote || "Please revise this MCQ."}</small>}</td><td>{question.subjectName} › {question.topicName}</td><td>{question.difficulty}</td><td><span className={`admin-status admin-status-${question.status}`}>{question.status.replace("_", " ")}</span></td><td><div className="admin-inline-actions"><button type="button" className="mcq-bank-row-action" aria-label={`Preview MCQ ${question.id}`} title="Preview" onClick={() => setPreviewQuestion(question)}><Eye size={16} aria-hidden="true" /></button>{(canEditAnyMcqs || (canEditOwnMcqs && String(question.createdBy) === currentUserId && (question.status === "draft" || question.status === "rejected"))) && <button type="button" className="mcq-bank-row-action" aria-label={`Edit MCQ ${question.id}`} title="Edit" onClick={() => editQuestion(question)}><Pencil size={15} aria-hidden="true" /></button>}{canPublishQuestion(question.status, canPublish, canDirectPublish) && <button type="button" className="mcq-bank-row-action" aria-label={`Publish MCQ ${question.id}`} title="Publish" onClick={() => void sessionAction("publish", question)}><Upload size={16} aria-hidden="true" /></button>}{canDelete && question.status !== "archived" && <button type="button" className="mcq-bank-row-action" aria-label={`Archive MCQ ${question.id}`} title="Archive" onClick={() => void sessionAction("archive", question)}><Archive size={16} aria-hidden="true" /></button>}</div></td></tr>)}{!bankQuestions.length && <tr><td colSpan={6}><div className="admin-empty-state"><strong>No MCQs match these filters</strong><span>Change a filter or clear the search to see more questions.</span><button type="button" className="button button-light" onClick={() => { setBankSearch(""); setBankTopic(""); setBankAuthor(""); setBankSource(""); setBankLanguage(""); setBankStatus("all"); }}>Clear filters</button></div></td></tr>}</tbody></table></div>}
-      {!reviewQueueView && <div className="mcq-bank-pagination"><span className="mcq-bank-range">Showing {bankTotal ? (bankPage - 1) * BANK_PAGE_SIZE + 1 : 0}–{Math.min(bankPage * BANK_PAGE_SIZE, bankTotal)} of {bankTotal.toLocaleString()}</span><div className="mcq-bank-page-controls"><button type="button" className="mcq-bank-page-button" aria-label="Previous page" disabled={bankPage <= 1 || bankLoading} onClick={() => setBankPage((page) => Math.max(1, page - 1))}><ChevronLeft size={17} aria-hidden="true" /></button><span>Page {bankPage} of {bankPages}</span><button type="button" className="mcq-bank-page-button" aria-label="Next page" disabled={bankPage >= bankPages || bankLoading} onClick={() => setBankPage((page) => Math.min(bankPages, page + 1))}><ChevronRight size={17} aria-hidden="true" /></button></div></div>}
+      <SitePagination page={bankPage} pageCount={bankPages} pageSize={bankPageSize} total={bankTotal} disabled={bankLoading} onPageChange={setBankPage} onPageSizeChange={(size) => { setBankPageSize(size); setBankPage(1); }} ariaLabel={reviewQueueView ? "Review queue pages" : "MCQ bank pages"} className="mcq-bank-pagination" />
     </section>}
 
     {previewQuestion && <div className="mcq-preview-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPreviewQuestion(null); }}><aside className="mcq-preview-drawer" role="dialog" aria-modal="true" aria-labelledby="mcq-preview-title"><div className="admin-panel-heading"><div><span className="eyebrow">LEARNER PREVIEW</span><h3 id="mcq-preview-title">MCQ #{previewQuestion.id}</h3></div><button type="button" className="button button-light" onClick={() => setPreviewQuestion(null)}>Close</button></div><p><LocalizedText>{previewQuestion.prompt}</LocalizedText></p>{previewQuestion.questionImageUrl && <Image src={previewQuestion.questionImageUrl} alt="Question image" width={640} height={360} unoptimized />}{previewQuestion.choices.map((choice) => <article className="mcq-preview-choice" key={choice.label}><b>{choice.label}</b><LocalizedText>{choice.text}</LocalizedText>{choice.imageUrl && <Image src={choice.imageUrl} alt={`Option ${choice.label} image`} width={480} height={280} unoptimized />}</article>)}<small>{previewQuestion.subjectName} › {previewQuestion.topicName} · {previewQuestion.sourceNote} · {previewQuestion.status}</small>{previewQuestion.explanation && <details><summary>Explanation</summary><RichText value={previewQuestion.explanation} /></details>}</aside></div>}

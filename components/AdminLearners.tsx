@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import ReactPaginate from "react-paginate";
 import { ArrowLeft, Eye, EyeOff, LockKeyhole, Mail, Pencil, Plus, Search, ShieldCheck, UserRound, UserRoundPlus, UserRoundX } from "lucide-react";
 import { AdminFormCardHeader } from "@/components/AdminFormCardHeader";
 import { useConfirmModal } from "@/components/ConfirmModal";
 import { getErrorMessage, parseApiResponse } from "@/lib/error-message";
 import { notify } from "@/lib/toast";
+import { SitePagination } from "@/components/SitePagination";
 
 type Learner = { id: string; name: string; email: string; status: "active" | "inactive"; created_at: string; email_verified_at: string | null };
 type LearnerResponse = { learners: Learner[]; total: number; page: number; pageSize: number; pageCount: number };
@@ -30,6 +30,7 @@ export function AdminLearners() {
   const [total, setTotal] = useState(0);
   const [pageCount, setPageCount] = useState(1);
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(25);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -42,13 +43,14 @@ export function AdminLearners() {
     const version = ++requestVersion.current;
     setLoading(true);
     try {
-      const params = new URLSearchParams({ page: String(page + 1) });
+      const params = new URLSearchParams({ page: String(page + 1), pageSize: String(pageSize) });
       if (search.trim()) params.set("search", search.trim());
       const result = await learnerRequest<LearnerResponse>("GET", undefined, params);
       if (version !== requestVersion.current) return;
       setRows(result.learners);
       setTotal(result.total);
       setPageCount(result.pageCount);
+      if (result.pageSize !== pageSize) setPageSize(result.pageSize);
       setError("");
       if (result.page - 1 !== page) setPage(result.page - 1);
     } catch (cause) {
@@ -57,7 +59,7 @@ export function AdminLearners() {
       setError(message);
       notify.error(message);
     } finally { if (version === requestVersion.current) setLoading(false); }
-  }, [page, search]);
+  }, [page, pageSize, search]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => { void load(); }, 0);
@@ -140,13 +142,6 @@ export function AdminLearners() {
       {!loading && rows.length === 0 && <tr><td colSpan={5} className="admin-table-empty"><strong>{search.trim() ? "No learners match this search" : "No learner accounts yet"}</strong><span>{search.trim() ? "Try a different name or email." : "New learner accounts will appear here."}</span>{search.trim() && <button type="button" className="button button-light" onClick={() => setSearch("")}>Clear search</button>}</td></tr>}
       {loading && <tr><td colSpan={5} className="admin-table-empty">Loading learner accounts…</td></tr>}
     </tbody></table></div>
-    <div className="learner-directory-pagination"><span>{total ? `Showing ${(page * 25) + 1}–${Math.min((page + 1) * 25, total)} of ${total}` : "No learners to show"}</span>{pageCount > 1 && <ReactPaginate
-      breakLabel="…" nextLabel="Next →" previousLabel="← Previous"
-      onPageChange={({ selected }) => setPage(selected)} pageRangeDisplayed={3} marginPagesDisplayed={1}
-      pageCount={pageCount} forcePage={page} renderOnZeroPageCount={null}
-      containerClassName="learner-pagination" pageClassName="learner-pagination-page" pageLinkClassName="learner-pagination-link"
-      previousClassName="learner-pagination-previous" nextClassName="learner-pagination-next" activeClassName="is-active"
-      disabledClassName="is-disabled" breakClassName="learner-pagination-break"
-    />}</div>
+    <SitePagination page={page + 1} pageCount={pageCount} pageSize={pageSize} total={total} disabled={loading} onPageChange={(nextPage) => setPage(nextPage - 1)} onPageSizeChange={(size) => { setPageSize(size); setPage(0); }} ariaLabel="Learner account pages" className="learner-directory-pagination" />
   </section>;
 }

@@ -63,7 +63,7 @@ The root layout (`app/layout.tsx`) provides the global metadata, header, footer,
 | `/search` | Search | Search box and subject/topic/question results |
 | `/account` | Learner account | Sign-in/register, saved questions, quiz attempts, progress |
 
-Topic and past-paper question sets use ten questions per page. Learners can switch between Read mode, which shows the answer, and Quiz mode, which marks the selected and correct choices after one locked choice per question. Explanations are collapsed under a “Show explanation” disclosure in both modes. Numbered pagination is provided by `react-paginate` and styled for light/dark themes and small screens.
+Topic and past-paper question sets use ten questions per page. Learners can switch between Read mode, which shows the answer, and Quiz mode, which marks the selected and correct choices after one locked choice per question. Explanations are collapsed under a “Show explanation” disclosure in both modes. The shared `components/SitePagination.tsx` component uses the installed `react-paginate` library for numbered pages, previous/next controls, range summaries, and responsive light/dark styling. Admin tables that support pagination also offer 10, 25, 50, or 100 rows per page.
 
 The learner account reports quiz scores using answered questions only, including for older attempts where skipped questions were stored as unanswered rows. Wrong answers are grouped by topic for retry, reading, and dismissal; dismissing a topic hides its missed questions without deleting attempt history. Subject performance cards show correct-answer percentages and expandable topic breakdowns based on all answered attempts.
 
@@ -88,7 +88,7 @@ The admin interface hides unavailable tools for each role, and the API checks th
 - Shared colors, focus rings, typography, and responsive behavior are defined in `app/globals.css`.
 - Buttons and fields have visible keyboard focus styles.
 - Form fields use labels; status messages use alert/status semantics.
-- Admin lists and question pickers support search/filtering and pagination where large datasets are expected.
+- Admin lists and question pickers support search/filtering and shared numbered pagination where large datasets are expected; page-size controls offer 10, 25, 50, and 100 rows.
 - Admin pages are excluded from indexing. Quiz and search result pages are also configured not to be indexed.
 
 ## 4. Backend and request flow

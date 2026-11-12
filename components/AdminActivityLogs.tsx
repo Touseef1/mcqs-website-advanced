@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { getErrorMessage, parseApiResponse } from "@/lib/error-message";
 import { notify } from "@/lib/toast";
+import { SitePagination } from "@/components/SitePagination";
 
 type ActivityAction = "login" | "logout" | "mcq_added" | "mcq_edited" | "mcq_archived" | "mcq_unarchived" | "mcq_deleted" | "paper_added" | "paper_edited" | "paper_archived" | "paper_unarchived" | "paper_deleted";
 type ActivityLog = { id: number; userId: string; userName: string; userRole: string; action: ActivityAction; targetType: "mcq" | "paper" | null; targetId: number | null; targetTitle: string | null; ipAddress: string | null; occurredAtUtc: string };
@@ -29,13 +30,14 @@ export function AdminActivityLogs() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   const [appliedFilters, setAppliedFilters] = useState({ userId: "", action: "", from: "", to: "" });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
-    const query = new URLSearchParams({ page: String(page), pageSize: "50" });
+    const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
     if (appliedFilters.userId) query.set("userId", appliedFilters.userId);
     if (appliedFilters.action) query.set("action", appliedFilters.action);
     if (appliedFilters.from) query.set("from", appliedFilters.from);
@@ -47,7 +49,7 @@ export function AdminActivityLogs() {
       })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [page, appliedFilters]);
+  }, [page, pageSize, appliedFilters]);
 
   function applyFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -99,7 +101,7 @@ export function AdminActivityLogs() {
         {!loading && !data.logs.length && <tr><td colSpan={5}>No activity matches these filters.</td></tr>}
         {loading && <tr><td colSpan={5}>Loading activity…</td></tr>}
       </tbody></table></div>
-      <div className="activity-pagination"><span>Page {data.pagination.page} of {data.pagination.totalPages}</span><div className="admin-inline-actions"><button className="button button-light" type="button" disabled={page <= 1 || loading} onClick={() => movePage(Math.max(1, page - 1))}>Previous</button><button className="button button-light" type="button" disabled={page >= data.pagination.totalPages || loading} onClick={() => movePage(Math.min(data.pagination.totalPages, page + 1))}>Next</button></div></div>
+      <SitePagination page={page} pageCount={data.pagination.totalPages} pageSize={pageSize} total={data.pagination.total} disabled={loading} onPageChange={movePage} onPageSizeChange={(size) => { setPageSize(size); movePage(1); }} ariaLabel="Activity log pages" className="activity-pagination" />
     </section>
   </div>;
 }

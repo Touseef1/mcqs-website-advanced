@@ -5,7 +5,7 @@ import { getAdminPrincipal, requirePermission } from "@/lib/admin-auth";
 import { db, hasDatabase } from "@/lib/db";
 import { hashLearnerPassword } from "@/lib/learner-auth";
 
-const PAGE_SIZE = 25;
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
 function unavailable() {
   return NextResponse.json({ error: "Configure MySQL and apply the learner account migrations first." }, { status: 503 });
@@ -36,22 +36,24 @@ export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
   const query = (params.get("search") ?? "").trim().slice(0, 100);
   const page = Math.max(1, Number.parseInt(params.get("page") ?? "1", 10) || 1);
+  const requestedPageSize = Number.parseInt(params.get("pageSize") ?? "25", 10);
+  const pageSize = PAGE_SIZE_OPTIONS.includes(requestedPageSize) ? requestedPageSize : 25;
   const where = query ? "WHERE name LIKE ? OR email LIKE ?" : "";
   const values = query ? [`%${query}%`, `%${query}%`] : [];
   const [countRows] = await db.execute<Array<RowDataPacket & { total: number }>>(
     `SELECT COUNT(*) AS total FROM learners ${where}`, values,
   );
   const total = Number(countRows[0]?.total ?? 0);
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const currentPage = Math.min(page, pageCount);
   const [learners] = await db.execute<Array<RowDataPacket & {
     id: number; name: string; email: string; status: "active" | "inactive"; created_at: string; email_verified_at: string | null;
   }>>(
     `SELECT id, name, email, status, created_at, email_verified_at FROM learners ${where} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
-    [...values, PAGE_SIZE, (currentPage - 1) * PAGE_SIZE],
+    [...values, pageSize, (currentPage - 1) * pageSize],
   );
 
-  return NextResponse.json({ learners: learners.map((learner) => ({ ...learner, id: String(learner.id) })), total, page: currentPage, pageSize: PAGE_SIZE, pageCount }, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json({ learners: learners.map((learner) => ({ ...learner, id: String(learner.id) })), total, page: currentPage, pageSize, pageCount }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(request: Request) {

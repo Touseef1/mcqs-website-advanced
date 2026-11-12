@@ -8,7 +8,7 @@ import { notify } from "@/lib/toast";
 import { MCQImage } from "@/components/MCQImage";
 import { LocalizedText } from "@/components/LocalizedText";
 import { RichText } from "@/components/RichText";
-import ReactPaginate from "react-paginate";
+import { SitePagination } from "@/components/SitePagination";
 
 type QuizResult = {
   score: number;
@@ -27,32 +27,7 @@ type StudyMode = "read" | "quiz";
 const PAGE_SIZE = 10;
 
 function LearnerPagination({ currentPage, pageCount, total, onChange }: { currentPage: number; pageCount: number; total: number; onChange: (page: number) => void }) {
-  if (pageCount <= 1) return null;
-  const first = (currentPage - 1) * PAGE_SIZE + 1;
-  const last = Math.min(currentPage * PAGE_SIZE, total);
-  return <div className="learner-pagination-wrap" aria-label="Question pages">
-    <p className="learner-pagination-summary">Questions {first}–{last} of {total} · Page {currentPage} of {pageCount}</p>
-    <ReactPaginate
-      breakLabel="…"
-      nextLabel={<><span>Next</span><span className="learner-pagination-arrow" aria-hidden="true">→</span></>}
-      onPageChange={({ selected }) => onChange(selected + 1)}
-      pageRangeDisplayed={3}
-      marginPagesDisplayed={1}
-      pageCount={pageCount}
-      forcePage={currentPage - 1}
-      previousLabel={<><span className="learner-pagination-arrow" aria-hidden="true">←</span><span>Previous</span></>}
-      renderOnZeroPageCount={null}
-      containerClassName="learner-pagination"
-      pageClassName="learner-pagination-page"
-      pageLinkClassName="learner-pagination-link"
-      activeClassName="is-active"
-      previousClassName="learner-pagination-previous"
-      nextClassName="learner-pagination-next"
-      disabledClassName="is-disabled"
-      breakClassName="learner-pagination-break"
-      breakLinkClassName="learner-pagination-link"
-    />
-  </div>;
+  return <SitePagination page={currentPage} pageCount={pageCount} pageSize={PAGE_SIZE} total={total} onPageChange={onChange} itemLabel="Questions" ariaLabel="Question pages" className="learner-pagination-wrap" />;
 }
 
 export function QuizRunner({ questions, title, quizSlug, quizPath, canBookmark = false, onRemoveQuestion, removingQuestionId }: { questions: PublicQuestion[]; title: string; quizSlug: string; quizPath?: string; canBookmark?: boolean; onRemoveQuestion?: (questionId: number) => void; removingQuestionId?: number | null }) {

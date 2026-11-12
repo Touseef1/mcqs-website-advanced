@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, ClipboardCopy, Download, LoaderCircle, RefreshCw, Search } from "lucide-react";
+import { Check, ClipboardCopy, Download, LoaderCircle, RefreshCw, Search } from "lucide-react";
 import { LocalizedText } from "@/components/LocalizedText";
+import { SitePagination } from "@/components/SitePagination";
 import { getErrorMessage } from "@/lib/error-message";
 import { notify } from "@/lib/toast";
 
@@ -11,7 +12,6 @@ type AdminPaperOption = { id: number; title: string; status: string };
 type PageResponse = { page: number; totalPages: number; questions: ExternalMcq[]; error?: string };
 type Props = { papers: AdminPaperOption[]; initialPaperIds?: number[]; onSendToBulk: (text: string, paperIds: number[]) => void };
 
-const PAGE_SIZE = 20;
 const labels = ["A", "B", "C", "D"] as const;
 const DEFAULT_SOURCE = "https://testpointpk.com/subcategory-mcqs/urdu-adab";
 
@@ -38,6 +38,7 @@ export function TestPointMcqImporter({ papers, initialPaperIds = [], onSendToBul
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<"unique" | "duplicates">("unique");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [totalPages, setTotalPages] = useState(0);
   const [loadedPages, setLoadedPages] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -56,8 +57,8 @@ export function TestPointMcqImporter({ papers, initialPaperIds = [], onSendToBul
   const visibleQuestions = useMemo(() => {
     const term = search.trim().toLocaleLowerCase();
     const filtered = term ? tabItems.filter((question) => `${question.prompt} ${question.choices.join(" ")} ${question.explanation}`.toLocaleLowerCase().includes(term)) : tabItems;
-    return { pageItems: filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), pageCount: Math.max(1, Math.ceil(filtered.length / PAGE_SIZE)) };
-  }, [tabItems, search, page]);
+    return { pageItems: filtered.slice((page - 1) * pageSize, page * pageSize), total: filtered.length, pageCount: Math.max(1, Math.ceil(filtered.length / pageSize)) };
+  }, [tabItems, search, page, pageSize]);
   const selectedQuestions = useMemo(() => { const ids = new Set(selected); return uniqueQuestions.filter((question) => ids.has(question.sourceId)); }, [uniqueQuestions, selected]);
   const activePapers = useMemo(() => papers.filter((paper) => paper.status !== "archived"), [papers]);
 
@@ -123,8 +124,8 @@ export function TestPointMcqImporter({ papers, initialPaperIds = [], onSendToBul
     {questions.length > 0 && <>
       <div className="testpoint-importer-toolbar"><label className="testpoint-importer-search"><Search size={15} aria-hidden="true" /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Search questions and explanations" /></label><span>{uniqueQuestions.length} unique · {duplicateQuestions.length} duplicates · {selected.length} selected</span><div className="testpoint-importer-actions"><button type="button" className="text-link" onClick={() => setSelected(uniqueQuestions.map((question) => question.sourceId))}>Select unique MCQs</button><button type="button" className="button button-light" disabled={!selectedQuestions.length} onClick={() => void copySelected()}><ClipboardCopy size={14} aria-hidden="true" />Copy selected</button><button type="button" className="button button-primary" disabled={!selectedQuestions.length} onClick={() => onSendToBulk(formatBulkText(selectedQuestions), selectedPaperIds)}><Check size={14} aria-hidden="true" />Send unique selection to bulk editor</button></div></div>
       <div className="testpoint-importer-tabs" role="tablist" aria-label="Imported MCQ lists"><button type="button" role="tab" aria-selected={tab === "unique"} onClick={() => { setTab("unique"); setPage(1); }}>Unique MCQs ({uniqueQuestions.length})</button><button type="button" role="tab" aria-selected={tab === "duplicates"} onClick={() => { setTab("duplicates"); setPage(1); }}>Duplicate MCQs ({duplicateQuestions.length})</button></div>
-      <div className="testpoint-importer-list-wrap"><table className="testpoint-importer-list"><thead><tr><th><input type="checkbox" aria-label="Select MCQs on this page" checked={visibleQuestions.pageItems.length > 0 && visibleQuestions.pageItems.filter((question) => !duplicateIds.has(question.sourceId)).every((question) => selected.includes(question.sourceId))} onChange={toggleVisible} /></th><th>MCQ · OPTIONS · EXPLANATION</th><th>ANSWER</th>{tab === "duplicates" && <th>ACTION</th>}</tr></thead><tbody>{visibleQuestions.pageItems.map((question, index) => <tr key={question.sourceId} className={duplicateIds.has(question.sourceId) ? "is-duplicate" : ""}><td><input type="checkbox" aria-label={`Select source MCQ ${question.sourceId}`} checked={selected.includes(question.sourceId)} disabled={duplicateIds.has(question.sourceId)} onChange={() => toggleOne(question.sourceId)} /></td><td><article className="testpoint-importer-question"><div className="testpoint-importer-prompt"><strong>{(page - 1) * PAGE_SIZE + index + 1}.</strong><LocalizedText>{question.prompt}</LocalizedText>{duplicateIds.has(question.sourceId) && <span className="testpoint-duplicate-badge">Duplicate</span>}</div><ol type="A">{question.choices.map((choice, choiceIndex) => <li key={labels[choiceIndex]} className={question.correctChoice === labels[choiceIndex] ? "is-correct" : ""}><span>{labels[choiceIndex]})</span><LocalizedText>{choice}</LocalizedText></li>)}</ol><details><summary>Explanation</summary><p dir="auto"><LocalizedText>{question.explanation || "No explanation was provided on the source page."}</LocalizedText></p></details><a href={question.sourceUrl} target="_blank" rel="noreferrer" className="testpoint-importer-source-link">View source MCQ</a></article></td><td><span className="testpoint-importer-answer">{question.correctChoice}</span></td>{tab === "duplicates" && <td><button type="button" className="text-link text-danger" onClick={() => removeFromImport(question.sourceId)}>Remove from import</button></td>}</tr>)}</tbody></table>{!visibleQuestions.pageItems.length && <p className="admin-empty-state">No imported MCQs match this list and search.</p>}</div>
-      <nav className="testpoint-importer-pagination" aria-label="Imported MCQs pages"><button type="button" className="button button-light" disabled={page <= 1} onClick={() => setPage((current) => current - 1)}><ChevronLeft size={15} aria-hidden="true" />Previous</button><span>Page {page} of {visibleQuestions.pageCount}</span><button type="button" className="button button-light" disabled={page >= visibleQuestions.pageCount} onClick={() => setPage((current) => current + 1)}>Next<ChevronRight size={15} aria-hidden="true" /></button></nav>
+      <div className="testpoint-importer-list-wrap"><table className="testpoint-importer-list"><thead><tr><th><input type="checkbox" aria-label="Select MCQs on this page" checked={visibleQuestions.pageItems.length > 0 && visibleQuestions.pageItems.filter((question) => !duplicateIds.has(question.sourceId)).every((question) => selected.includes(question.sourceId))} onChange={toggleVisible} /></th><th>MCQ · OPTIONS · EXPLANATION</th><th>ANSWER</th>{tab === "duplicates" && <th>ACTION</th>}</tr></thead><tbody>{visibleQuestions.pageItems.map((question, index) => <tr key={question.sourceId} className={duplicateIds.has(question.sourceId) ? "is-duplicate" : ""}><td><input type="checkbox" aria-label={`Select source MCQ ${question.sourceId}`} checked={selected.includes(question.sourceId)} disabled={duplicateIds.has(question.sourceId)} onChange={() => toggleOne(question.sourceId)} /></td><td><article className="testpoint-importer-question"><div className="testpoint-importer-prompt"><strong>{(page - 1) * pageSize + index + 1}.</strong><LocalizedText>{question.prompt}</LocalizedText>{duplicateIds.has(question.sourceId) && <span className="testpoint-duplicate-badge">Duplicate</span>}</div><ol type="A">{question.choices.map((choice, choiceIndex) => <li key={labels[choiceIndex]} className={question.correctChoice === labels[choiceIndex] ? "is-correct" : ""}><span>{labels[choiceIndex]})</span><LocalizedText>{choice}</LocalizedText></li>)}</ol><details><summary>Explanation</summary><p dir="auto"><LocalizedText>{question.explanation || "No explanation was provided on the source page."}</LocalizedText></p></details><a href={question.sourceUrl} target="_blank" rel="noreferrer" className="testpoint-importer-source-link">View source MCQ</a></article></td><td><span className="testpoint-importer-answer">{question.correctChoice}</span></td>{tab === "duplicates" && <td><button type="button" className="text-link text-danger" onClick={() => removeFromImport(question.sourceId)}>Remove from import</button></td>}</tr>)}</tbody></table>{!visibleQuestions.pageItems.length && <p className="admin-empty-state">No imported MCQs match this list and search.</p>}</div>
+      <SitePagination page={page} pageCount={visibleQuestions.pageCount} pageSize={pageSize} total={visibleQuestions.total} disabled={loading} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} itemLabel="MCQs" ariaLabel="Imported MCQ pages" className="testpoint-importer-pagination" />
     </>}
     {!questions.length && !loading && <p className="testpoint-importer-empty">Load the public source URL to review its MCQs. Nothing is saved until you submit rows through the bulk editor.</p>}
     {totalPages > 0 && <small className="testpoint-importer-attribution">Source: {sourceUrl} · {totalPages} pages detected</small>}
