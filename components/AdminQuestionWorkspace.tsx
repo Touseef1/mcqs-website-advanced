@@ -20,6 +20,7 @@ type Choice = { label: string; text: string; imageUrl?: string | null };
 type Question = { id: number; topicId: number; topicName: string; subjectName: string; prompt: string; questionImageUrl?: string | null; explanation: string; sourceNote: string; correctChoice: string; difficulty: "easy" | "medium" | "hard"; language: "en" | "ur"; authorName?: string; status: Status; version: number; reviewNote?: string | null; createdBy?: number | string; paperIds: number[]; choices: Choice[] };
 type DraftQuestion = { prompt: string; choices: string[]; correctChoice: string; explanation: string; language: "en" | "ur"; questionImageUrl?: string | null; choiceImageUrls?: Array<string | null> };
 type PreviewRow = DraftQuestion & { rowNumber: number; errors: string[] };
+type BulkExistingMatch = { id: number; prompt: string; status: Status; attachedPaperIds: number[] };
 type Props = { topics: Topic[]; papers: Paper[]; canManagePapers: boolean; canAddQuestionsToPapers: boolean; canQuickCreatePaper: boolean; canPublish: boolean; canDirectPublish: boolean; isSuperAdmin: boolean; canDelete: boolean; canCreateMcqs: boolean; canReviewMcqs: boolean; canEditOwnMcqs: boolean; canEditAnyMcqs: boolean; currentUserId: string; initialPaperId: number | null; initialSearch?: string; initialStatus?: string; startInBank?: boolean; onUpdated: () => Promise<void> };
 
 const emptyDraft: DraftQuestion = { prompt: "", choices: ["", "", "", ""], correctChoice: "", explanation: "", language: "en", questionImageUrl: null, choiceImageUrls: [null, null, null, null] };
@@ -254,6 +255,8 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
   const [pasteText, setPasteText] = useState("");
   const [externalImporterOpen, setExternalImporterOpen] = useState(false);
   const [bulkRows, setBulkRows] = useState<PreviewRow[]>([]);
+  const [existingBulkMatches, setExistingBulkMatches] = useState<Record<number, BulkExistingMatch>>({});
+  const [matchingBulkRows, setMatchingBulkRows] = useState(false);
   const [bulkPaperIds, setBulkPaperIds] = useState<number[] | null>(null);
   const [csvFileName, setCsvFileName] = useState("");
   const [newPaperOpen, setNewPaperOpen] = useState(false);
@@ -569,38 +572,66 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
       setCsvFileName(file.name);
       const text = await file.text();
       setPasteText(text);
-      setBulkRows(parseCsv(text));
+      const rows = parseCsv(text);
+      setBulkRows(rows);
       setError("");
+      await checkExistingBulkRows(rows);
     } catch (cause) { const message = getErrorMessage(cause, "Could not read the CSV file."); setError(message); toastNotify.error(message); }
   }
 
-  function previewText() {
-    setBulkRows(parseTextBlocks(pasteText));
+  async function checkExistingBulkRows(rows: PreviewRow[]) {
+    const selectedPaperIds = bulkPaperIds ?? (paperId ? [Number(paperId)] : []);
+    setExistingBulkMatches({});
+    if (!selectedPaperIds.length || !rows.length) return;
+    if (rows.length > 100) {
+      setError("Paper imports are limited to 100 MCQs at a time. Category-only imports have no 100-question cap.");
+      return;
+    }
+    setMatchingBulkRows(true);
+    try {
+      const response = await adminRequest<{ matches: Array<{ row: number } & BulkExistingMatch> }>("/api/admin/questions/bulk", "POST", {
+        action: "match-existing", topicId: Number(topicId), paperIds: selectedPaperIds,
+        questions: rows.map(({ prompt, choices, correctChoice, explanation, rowNumber }) => ({ prompt, choices, correctChoice, explanation, rowNumber })),
+      });
+      setExistingBulkMatches(Object.fromEntries(response.matches.map((match) => [match.row, match])));
+      if (response.matches.length) toastNotify.info(`${response.matches.length} existing MCQ${response.matches.length === 1 ? "" : "s"} found. They will be linked to the selected paper instead of duplicated.`);
+    } catch (cause) {
+      const message = getErrorMessage(cause, "Could not check the category for existing MCQs.");
+      setError(message);
+      toastNotify.error(message);
+    } finally { setMatchingBulkRows(false); }
+  }
+
+  async function previewText() {
+    const rows = parseTextBlocks(pasteText);
+    setBulkRows(rows);
     setCsvFileName("");
     setError("");
+    await checkExistingBulkRows(rows);
   }
 
   async function importRows() {
     if (!bulkRows.length) { setError("Add MCQs to the preview first."); return; }
     if (!topicId || sourceNote.trim().length < 4) { setError("Choose a category and enter a source note in the context bar first."); return; }
-    if (bulkRows.length > 100) { setError("Import up to 100 MCQs at a time."); return; }
+    const selectedPaperIds = bulkPaperIds ?? (paperId ? [Number(paperId)] : []);
+    if (selectedPaperIds.length && bulkRows.length > 100) { setError("Paper imports are limited to 100 MCQs at a time. Remove the paper selection to import more into the category."); return; }
     setBusy(true); setError("");
     try {
-      const result = await adminRequest<{ ids: number[]; count: number; skipped: number; results: Array<{ row: number; id?: number; ok: boolean; error?: string }> }>("/api/admin/questions/bulk", "POST", {
-        action: "import", topicId: Number(topicId), paperIds: bulkPaperIds ?? (paperId ? [Number(paperId)] : []), difficulty, sourceNote: sourceNote.trim(), status: "draft",
+      const result = await adminRequest<{ ids: number[]; count: number; attachedExistingCount: number; skipped: number; results: Array<{ row: number; id?: number; ok: boolean; existing?: boolean; error?: string }> }>("/api/admin/questions/bulk", "POST", {
+        action: "import", topicId: Number(topicId), paperIds: selectedPaperIds, difficulty, sourceNote: sourceNote.trim(), status: "draft",
         questions: bulkRows.map(({ prompt, choices, correctChoice, explanation, rowNumber }) => ({ prompt, choices, correctChoice, explanation, rowNumber })),
       });
       const topic = topics.find((item) => item.id === Number(topicId));
       const imported = result.results.flatMap((item): Question[] => {
-        if (!item.ok || !item.id) return [];
+        if (!item.ok || !item.id || item.existing) return [];
         const row = bulkRows.find((candidate) => candidate.rowNumber === item.row);
         if (!row) return [];
         return [{
-          id: item.id, topicId: Number(topicId), topicName: topic?.name ?? "Topic", subjectName: topic?.subject_name ?? "Subject",
-          prompt: row.prompt.trim(), explanation: row.explanation.trim(), sourceNote: sourceNote.trim(), correctChoice: row.correctChoice,
-          difficulty, language: detectQuestionLanguage([row.prompt, ...row.choices, row.explanation]), status: "draft", paperIds: bulkPaperIds ?? (paperId ? [Number(paperId)] : []),
-          version: 1,
-          choices: row.choices.map((text, choiceIndex) => ({ label: questionLabels[choiceIndex], text: text.trim() })),
+        id: item.id, topicId: Number(topicId), topicName: topic?.name ?? "Topic", subjectName: topic?.subject_name ?? "Subject",
+        prompt: row.prompt.trim(), explanation: row.explanation.trim(), sourceNote: sourceNote.trim(), correctChoice: row.correctChoice,
+        difficulty, language: detectQuestionLanguage([row.prompt, ...row.choices, row.explanation]), status: "draft", paperIds: bulkPaperIds ?? (paperId ? [Number(paperId)] : []),
+        version: 1,
+        choices: row.choices.map((text, choiceIndex) => ({ label: questionLabels[choiceIndex], text: text.trim() })),
         }];
       });
       const updatedSession = [...imported.reverse(), ...sessionQuestions];
@@ -612,11 +643,12 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
         return row ? [{ ...row, errors: [item.error || "This MCQ could not be imported."] }] : [];
       });
       setBulkRows(remainingRows);
+      setExistingBulkMatches({});
       setPasteText(remainingRows.map((row) => `Q: ${row.prompt}\nA) ${row.choices[0]}\nB) ${row.choices[1]}\nC) ${row.choices[2]}\nD) ${row.choices[3]}\nAnswer: ${row.correctChoice}${row.explanation ? `\nExplanation: ${row.explanation}` : ""}`).join("\n\n"));
       setCsvFileName("");
       if (!remainingRows.length) setBulkPaperIds(null);
-      if (remainingRows.length) toastNotify.warning(`Imported ${result.count} MCQs. ${remainingRows.length} row${remainingRows.length === 1 ? "" : "s"} skipped; review the highlighted errors and retry.`);
-      else toastNotify.success(`Imported ${result.count} MCQs.`);
+      if (remainingRows.length) toastNotify.warning(`Imported ${result.count} new MCQs and attached ${result.attachedExistingCount} existing. ${remainingRows.length} row${remainingRows.length === 1 ? "" : "s"} skipped; review the highlighted errors and retry.`);
+      else toastNotify.success(`Imported ${result.count} new MCQs and attached ${result.attachedExistingCount} existing MCQs.`);
       await onUpdated();
     } catch (cause) { const message = getErrorMessage(cause, "Bulk import failed; no MCQs were saved."); setError(message); toastNotify.error(message); }
     finally { setBusy(false); }
@@ -700,8 +732,8 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
       <label className="mcq-csv-upload" htmlFor="mcq-csv-file">Upload CSV <input id="mcq-csv-file" type="file" accept=".csv,text/csv" onChange={(event) => void handleCsvFile(event)} /></label>
       {csvFileName && <p className="admin-helper">Loaded {csvFileName}. You can also edit the parsed source below.</p>}
       <textarea className={`mcq-bulk-textarea ${containsUrduScript(pasteText) ? "urdu-aware-input" : ""}`} lang={containsUrduScript(pasteText) ? "ur" : "en"} dir="auto" value={pasteText} onChange={(event) => setPasteText(event.target.value)} rows={12} placeholder={`Q: Which word is a noun?\nA) Quickly\nB) Honest\nC) Teacher\nD) Run\nAnswer: C\nExplanation: A teacher is a person.\n\nQ: ...`} />
-      <div className="admin-inline-actions"><button type="button" className="button button-light" onClick={previewText}>Preview pasted MCQs</button>{bulkRows.length > 0 && <button type="button" className="button button-primary" disabled={busy || !bulkRows.some((row) => !row.errors.length)} onClick={() => void importRows()}>{busy ? "Importing…" : `Import ${bulkRows.filter((row) => !row.errors.length).length} valid MCQs`}</button>}</div>
-      {bulkRows.length > 0 && <div className="mcq-preview-wrap"><div className="admin-panel-heading"><div><h4>Preview · {bulkRows.filter((row) => !row.errors.length).length} valid / {bulkRows.length} rows</h4><p>Rows with errors will not be sent. Valid rows import together in one transaction.</p></div></div><div className="mcq-preview-table-wrap"><table className="mcq-preview-table"><thead><tr><th>Row</th><th>Question</th><th>Options</th><th>Answer</th><th>Validation</th></tr></thead><tbody>{bulkRows.map((row) => <tr key={row.rowNumber} className={row.errors.length ? "has-errors" : ""}><td>{row.rowNumber}</td><td><LocalizedText>{row.prompt}</LocalizedText></td><td>{row.choices.map((choice, index) => <span key={index}>{questionLabels[index]}) <LocalizedText>{choice}</LocalizedText>{index < row.choices.length - 1 ? " · " : ""}</span>)}</td><td>{row.correctChoice}</td><td>{row.errors.length ? row.errors.join(" ") : "Ready"}</td></tr>)}</tbody></table></div></div>}
+      <div className="admin-inline-actions"><button type="button" className="button button-light" disabled={matchingBulkRows} onClick={() => void previewText()}>Preview pasted MCQs</button>{bulkRows.length > 0 && <button type="button" className="button button-primary" disabled={busy || matchingBulkRows || !bulkRows.some((row) => !row.errors.length)} onClick={() => void importRows()}>{matchingBulkRows ? "Checking category…" : busy ? "Importing…" : `${bulkPaperIds?.length || paperId ? "Import / attach" : "Import"} ${bulkRows.filter((row) => !row.errors.length).length} MCQs`}</button>}</div>
+      {bulkRows.length > 0 && <div className="mcq-preview-wrap"><div className="admin-panel-heading"><div><h4>Preview · {bulkRows.filter((row) => !row.errors.length).length} valid / {bulkRows.length} rows{Object.keys(existingBulkMatches).length ? ` · ${Object.keys(existingBulkMatches).length} already in category` : ""}</h4><p>{bulkPaperIds?.length || paperId ? "Existing matches will be linked to the selected paper instead of duplicated. Paper batches are limited to 100 rows; category-only imports have no 100-question cap." : "Category-only imports have no 100-question cap. Valid rows import together in one transaction."}</p></div></div><div className="mcq-preview-table-wrap"><table className="mcq-preview-table"><thead><tr><th>Row</th><th>Question</th><th>Options</th><th>Answer</th><th>Validation / Existing MCQ</th></tr></thead><tbody>{bulkRows.map((row) => { const match = existingBulkMatches[row.rowNumber]; return <tr key={row.rowNumber} className={row.errors.length ? "has-errors" : match ? "has-existing-match" : ""}><td>{row.rowNumber}</td><td><LocalizedText>{row.prompt}</LocalizedText></td><td>{row.choices.map((choice, index) => <span key={index}>{questionLabels[index]}) <LocalizedText>{choice}</LocalizedText>{index < row.choices.length - 1 ? " · " : ""}</span>)}</td><td>{row.correctChoice}</td><td>{row.errors.length ? row.errors.join(" ") : match ? <>{match.prompt === row.prompt ? "Existing" : "Existing match"} MCQ #{match.id}{match.attachedPaperIds.length === (bulkPaperIds ?? (paperId ? [Number(paperId)] : [])).length ? " · already attached" : " · will attach, no duplicate created"}</> : "Ready to create"}</td></tr>; })}</tbody></table></div></div>}
     </section>}
 
     {mode === "bank" && <section className={`admin-panel mcq-bank-panel ${reviewQueueView ? "is-review-queue-mode" : ""}`}>

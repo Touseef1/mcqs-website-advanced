@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import type { RowDataPacket } from "mysql2";
@@ -11,6 +12,7 @@ import { detectQuestionLanguage } from "@/lib/language";
 import { richTextToPlainText, sanitizeRichText } from "@/lib/rich-text";
 const labels = ["A", "B", "C", "D"] as const;
 type InputQuestion = { prompt: string; choices: string[]; correctChoice: string; explanation: string; rowNumber: number };
+type ExistingMatch = { id: number; prompt: string; status: string; attachedPaperIds: number[] };
 
 function error(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
@@ -29,7 +31,9 @@ function refreshContent() {
 
 function parseInputQuestion(value: unknown, index: number): { question: InputQuestion | null; rowNumber: number; error?: string } {
   const suppliedRowNumber = value && typeof value === "object" ? Number((value as Record<string, unknown>).rowNumber) : NaN;
-  const rowNumber = Number.isSafeInteger(suppliedRowNumber) && suppliedRowNumber > 0 ? suppliedRowNumber : index + 1;
+  const rowNumber = Number.isSafeInteger(suppliedRowNumber) && suppliedRowNumber > 0
+    ? suppliedRowNumber
+    : index + 1;
   if (!value || typeof value !== "object") return { question: null, rowNumber, error: "MCQ row is invalid." };
   const row = value as Record<string, unknown>;
   const prompt = typeof row.prompt === "string" ? row.prompt.trim() : "";
@@ -51,6 +55,66 @@ function parseIds(value: unknown) {
   if (!Array.isArray(value) || value.length < 1 || value.length > 200) return null;
   const ids = [...new Set(value.map(Number))];
   return ids.length && ids.every((id) => Number.isSafeInteger(id) && id > 0) ? ids : null;
+}
+
+function normalizeDuplicateText(value: string) {
+  return value.normalize("NFKC").replace(/\s+/g, " ").trim().toLocaleLowerCase();
+}
+
+function duplicateKey(question: Pick<InputQuestion, "prompt" | "choices" | "correctChoice">) {
+  return JSON.stringify([normalizeDuplicateText(question.prompt), ...question.choices.map(normalizeDuplicateText), question.correctChoice.toUpperCase()]);
+}
+
+async function findExistingMatches(
+  connection: import("mysql2/promise").PoolConnection,
+  topicId: number,
+  candidates: InputQuestion[],
+  paperIds: number[],
+) {
+  if (!candidates.length) return new Map<number, ExistingMatch>();
+  const prompts = [...new Set(candidates.map((item) => item.prompt.trim()))];
+  const [rows] = await connection.execute<Array<RowDataPacket & { id: number; question_text: string; correct_choice: string; status: string; label: string | null; choice_text: string | null }>>(
+    `SELECT q.id, q.question_text, q.correct_choice, q.status, c.label, c.choice_text
+     FROM questions q LEFT JOIN choices c ON c.question_id = q.id
+     WHERE q.topic_id = ? AND q.status != 'archived' AND TRIM(q.question_text) IN (${prompts.map(() => "?").join(",")})
+     ORDER BY CASE WHEN q.status = 'published' THEN 0 ELSE 1 END, q.id DESC, c.label`,
+    [topicId, ...prompts],
+  );
+  const grouped = new Map<number, { prompt: string; correctChoice: string; status: string; choices: string[] }>();
+  for (const row of rows) {
+    let item = grouped.get(row.id);
+    if (!item) {
+      item = { prompt: row.question_text, correctChoice: row.correct_choice, status: row.status, choices: ["", "", "", ""] };
+      grouped.set(row.id, item);
+    }
+    if (row.label && row.choice_text) item.choices[row.label.charCodeAt(0) - 65] = row.choice_text;
+  }
+  const byKey = new Map<string, number>();
+  for (const [id, item] of grouped) {
+    const key = duplicateKey({ prompt: item.prompt, choices: item.choices, correctChoice: item.correctChoice });
+    if (!byKey.has(key)) byKey.set(key, id);
+  }
+  const ids = [...new Set(candidates.flatMap((item) => {
+    const id = byKey.get(duplicateKey(item));
+    return id ? [id] : [];
+  }))];
+  const attachedByQuestion = new Map<number, number[]>();
+  if (paperIds.length && ids.length) {
+    const [links] = await connection.execute<Array<RowDataPacket & { paper_id: number; question_id: number }>>(
+      `SELECT paper_id, question_id FROM paper_questions WHERE paper_id IN (${paperIds.map(() => "?").join(",")}) AND question_id IN (${ids.map(() => "?").join(",")})`,
+      [...paperIds, ...ids],
+    );
+    for (const link of links) attachedByQuestion.set(link.question_id, [...(attachedByQuestion.get(link.question_id) ?? []), link.paper_id]);
+  }
+  const matches = new Map<number, ExistingMatch>();
+  for (const candidate of candidates) {
+    const id = byKey.get(duplicateKey(candidate));
+    if (id) {
+      const item = grouped.get(id)!;
+      matches.set(candidate.rowNumber, { id, prompt: item.prompt, status: item.status, attachedPaperIds: attachedByQuestion.get(id) ?? [] });
+    }
+  }
+  return matches;
 }
 
 function summarizeImportDatabaseError(cause: unknown) {
@@ -114,6 +178,31 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   const action = typeof body?.action === "string" ? body.action : "";
 
+  if (action === "match-existing") {
+    if (!requirePermission(principal, "mcq.create") || !requirePermission(principal, "paper.add_questions")) return error("Your role cannot check or attach questions to past papers.", 403);
+    const topicId = Number(body?.topicId);
+    const paperIds = Array.isArray(body?.paperIds) ? [...new Set(body.paperIds.map(Number))] : [];
+    const inputs = Array.isArray(body?.questions) ? body.questions : [];
+    if (!Number.isSafeInteger(topicId) || topicId < 1 || paperIds.length < 1 || paperIds.length > 200 || paperIds.some((id) => !Number.isSafeInteger(id) || id < 1) || inputs.length < 1 || inputs.length > 100) {
+      return error("Choose an active category and paper, then check up to 100 MCQs at a time.");
+    }
+    const connection = await db.getConnection();
+    try {
+      const [papers] = await connection.execute<Array<RowDataPacket & { id: number; status: string }>>(
+        `SELECT id, status FROM papers WHERE id IN (${paperIds.map(() => "?").join(",")})`, paperIds,
+      );
+      if (papers.length !== paperIds.length || papers.some((paper) => paper.status === "archived")) return error("Choose active past papers before checking for existing MCQs.");
+      const candidates = inputs.map(parseInputQuestion).flatMap((item) => item.question ? [item.question] : []);
+      const matches = await findExistingMatches(connection, topicId, candidates, paperIds);
+      return NextResponse.json({ matches: [...matches].map(([row, match]) => ({ row, ...match })) });
+    } catch (cause) {
+      console.error("Bulk duplicate check failed", cause);
+      return error("Could not check for existing MCQs. Retry the preview.", 500);
+    } finally {
+      connection.release();
+    }
+  }
+
   if (action === "import") {
     if (!requirePermission(principal, "mcq.create")) return error("Your role cannot add questions.", 403);
     const topicId = Number(body?.topicId);
@@ -123,17 +212,19 @@ export async function POST(request: Request) {
     const sourceNote = typeof body?.sourceNote === "string" ? body.sourceNote.trim() : "";
     const difficulty = body?.difficulty === "easy" || body?.difficulty === "hard" ? body.difficulty : "medium";
     const inputs = Array.isArray(body?.questions) ? body.questions : [];
-    if (!Number.isSafeInteger(topicId) || topicId < 1 || sourceNote.length < 4 || sourceNote.length > 500 || inputs.length < 1 || inputs.length > 200 || paperIds.length > 200 || paperIds.some((id) => !Number.isSafeInteger(id) || id < 1)) return error("Choose a category, source reference, 1–200 valid MCQs, and valid paper selections.");
+    if (!Number.isSafeInteger(topicId) || topicId < 1 || sourceNote.length < 4 || sourceNote.length > 500 || inputs.length < 1 || (paperIds.length > 0 && inputs.length > 100) || paperIds.length > 200 || paperIds.some((id) => !Number.isSafeInteger(id) || id < 1)) return error(paperIds.length ? "Choose a category and source reference, then import no more than 100 MCQs into a paper at a time." : "Choose a category and source reference, then add at least one MCQ.");
     if (paperIds.length && !requirePermission(principal, "paper.add_questions")) return error("Your role cannot add questions to past papers.", 403);
     const parsed = inputs.map(parseInputQuestion);
     const validRows = parsed.flatMap((item) => item.question ? [item.question] : []);
-    const rowResults: Array<{ row: number; ok: boolean; error?: string }> = parsed.map((item) => item.question
+    const rowResults: Array<{ row: number; ok: boolean; error?: string; id?: number }> = parsed.map((item) => item.question
       ? { row: item.rowNumber, ok: false, error: "Not imported because the database transaction did not complete." }
       : { row: item.rowNumber, ok: false, error: item.error ?? "This MCQ is invalid." });
     if (!validRows.length) return NextResponse.json({ ok: true, ids: [], count: 0, skipped: rowResults.length, paperIds, results: rowResults });
     const status = "draft" as const;
     const connection = await db.getConnection();
     const createdIds: number[] = [];
+    const existingMatches = new Map<number, ExistingMatch>();
+    const createdIdByRow = new Map<number, number>();
     try {
       await connection.beginTransaction();
       const [topic] = await connection.execute<Array<RowDataPacket & { id: number }>>(
@@ -153,7 +244,16 @@ export async function POST(request: Request) {
           return error(`Paper #${paperId} is missing or archived. No MCQs were imported.`);
         }
       }
-      for (const item of validRows) {
+      if (paperIds.length) {
+        for (const [rowNumber, match] of await findExistingMatches(connection, topicId, validRows, paperIds)) existingMatches.set(rowNumber, match);
+      }
+      const newRows = validRows.filter((item) => !existingMatches.has(item.rowNumber));
+      const randomizedRows = [...newRows];
+      for (let index = randomizedRows.length - 1; index > 0; index--) {
+        const swapIndex = randomInt(index + 1);
+        [randomizedRows[index], randomizedRows[swapIndex]] = [randomizedRows[swapIndex], randomizedRows[index]];
+      }
+      for (const item of randomizedRows) {
         const language = detectQuestionLanguage([item.prompt, ...item.choices, item.explanation]);
         const [insert] = await connection.execute(
           `INSERT INTO questions (topic_id, question_text, explanation, source_note, correct_choice, difficulty, language, status, created_by, updated_by)
@@ -162,12 +262,14 @@ export async function POST(request: Request) {
         );
         const questionId = Number((insert as { insertId: number }).insertId);
         createdIds.push(questionId);
+        createdIdByRow.set(item.rowNumber, questionId);
         for (let index = 0; index < labels.length; index++) {
           await connection.execute("INSERT INTO choices (question_id, label, choice_text) VALUES (?, ?, ?)", [questionId, labels[index], item.choices[index]]);
         }
       }
+      const allQuestionIds = [...createdIds, ...[...existingMatches.values()].map((match) => match.id)];
       for (const paperId of paperIds) {
-        const linked = await appendToPaper(connection, paperId, createdIds);
+        const linked = await appendToPaper(connection, paperId, allQuestionIds);
         if (linked.error) {
           await connection.rollback();
           return error(`${linked.error} No MCQs were imported.`);
@@ -192,15 +294,16 @@ export async function POST(request: Request) {
     } finally {
       connection.release();
     }
-    let createdIndex = 0;
     const results = parsed.map((item) => {
       if (!item.question) return { row: item.rowNumber, ok: false, error: item.error ?? "This MCQ is invalid." };
-      const id = createdIds[createdIndex++];
+      const existing = existingMatches.get(item.rowNumber);
+      if (existing) return { row: item.rowNumber, id: existing.id, ok: true, existing: true, attachedPaperIds: existing.attachedPaperIds };
+      const id = createdIdByRow.get(item.rowNumber);
       return { row: item.rowNumber, id, ok: true };
     });
-    await auditAdmin(principal, request, "bulk_create", "question", null, null, { questionIds: createdIds, skippedRows: results.filter((item) => !item.ok).map((item) => item.row), topicId, paperIds });
+    await auditAdmin(principal, request, "bulk_create", "question", null, null, { questionIds: createdIds, existingQuestionIds: [...existingMatches.values()].map((match) => match.id), skippedRows: results.filter((item) => !item.ok).map((item) => item.row), topicId, paperIds });
     refreshContent();
-    return NextResponse.json({ ok: true, ids: createdIds, count: createdIds.length, skipped: results.filter((item) => !item.ok).length, paperIds, results });
+    return NextResponse.json({ ok: true, ids: createdIds, count: createdIds.length, attachedExistingCount: existingMatches.size, skipped: results.filter((item) => !item.ok).length, paperIds, results });
   }
 
   const ids = parseIds(body?.ids);
@@ -214,6 +317,7 @@ export async function POST(request: Request) {
   if (action === "publish" && !requirePermission(principal, "mcq.publish")) return error("Only Paper Managers and Super Admins can publish questions.", 403);
   if (action === "archive" && !requirePermission(principal, "mcq.archive")) return error("Only the Super Admin can archive questions.", 403);
   if (action === "add-to-paper" && !requirePermission(principal, "paper.add_questions")) return error("Your role cannot add questions to past papers.", 403);
+  if (action === "add-to-paper" && ids.length > 100) return error("Add no more than 100 MCQs to a paper at a time.");
   if (action === "remove-from-paper" && !requirePermission(principal, "paper.manage")) return error("Your role cannot manage past-paper questions.", 403);
   if (!["change-category", "submit-review", "approve", "publish", "archive", "add-to-paper", "remove-from-paper"].includes(action)) return error("Choose a supported bulk action.");
   if (action === "change-category" && (!Number.isSafeInteger(topicId) || topicId < 1)) return error("Choose a valid category.");
