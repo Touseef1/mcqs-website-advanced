@@ -8,6 +8,7 @@ import { linkPublishedQuestionsBySource } from "@/lib/paper-links";
 import { auditAdmin } from "@/lib/admin-security";
 import { detectQuestionLanguage } from "@/lib/language";
 import { richTextToPlainText, sanitizeRichText } from "@/lib/rich-text";
+import { findExistingQuestionMatches } from "@/lib/question-duplicates";
 
 import { csrfFailure } from "@/lib/admin-security";
 const labels = ["A", "B", "C", "D"] as const;
@@ -182,6 +183,26 @@ export async function POST(request: Request) {
     if (!await validatePaperIds(connection, paperIds, status)) {
       await connection.rollback();
       return NextResponse.json({ error: "Choose active past papers. Published papers can contain only published MCQs." }, { status: 400 });
+    }
+    const [targetTopics] = await connection.execute<Array<RowDataPacket & { id: number }>>(
+      `SELECT t.id FROM topics t JOIN subjects s ON s.id = t.subject_id
+       WHERE t.id = ? AND t.status != 'archived' AND s.status != 'archived' FOR UPDATE`, [parsed.topicId],
+    );
+    if (!targetTopics[0]) {
+      await connection.rollback();
+      return NextResponse.json({ error: "Choose a valid active subject and topic." }, { status: 400 });
+    }
+    const duplicates = await findExistingQuestionMatches(connection, [{ rowNumber: 1, prompt: parsed.prompt, choices: parsed.choices, correctChoice: parsed.correctChoice }], parsed.topicId, paperIds);
+    const existing = duplicates.get(1);
+    if (existing) {
+      if (!paperIds.length) {
+        await connection.rollback();
+        return NextResponse.json({ error: `This MCQ already exists as #${existing.id} in ${existing.subjectName} › ${existing.topicName}. Skip it or select a paper to link the existing MCQ.`, duplicate: existing }, { status: 409 });
+      }
+      await syncQuestionPapers(connection, existing.id, paperIds);
+      await connection.commit();
+      refreshQuestions();
+      return NextResponse.json({ ok: true, id: existing.id, status: existing.status, existing: true, duplicate: existing });
     }
     const [insert] = await connection.execute(
       `INSERT INTO questions (topic_id, question_text, explanation, source_note, question_image_url, correct_choice, difficulty, language, status, created_by, updated_by)

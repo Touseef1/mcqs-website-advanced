@@ -3148,3 +3148,8 @@ body:has(.admin-dashboard) { background: #f1f2f7; }
   .site-pagination-link { min-width: 32px; height: 32px; padding-inline: 6px; }
   .site-pagination-page-status { font-size: 11px; }
 }
+
+.mcq-duplicate-match { display: grid; gap: 4px; padding: 7px 0; border-top: 1px solid rgba(135, 103, 39, .18); }
+.mcq-duplicate-match p { margin: 0; color: inherit; font-size: 11px; line-height: 1.5; }
+.mcq-duplicate-match .text-link { justify-self: start; font-size: 11px; }
+:root[data-theme="dark"] .mcq-duplicate-match { border-top-color: rgba(224, 194, 126, .2); }

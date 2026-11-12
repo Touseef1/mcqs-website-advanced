@@ -21,7 +21,8 @@ type Choice = { label: string; text: string; imageUrl?: string | null };
 type Question = { id: number; topicId: number; topicName: string; subjectName: string; prompt: string; questionImageUrl?: string | null; explanation: string; sourceNote: string; correctChoice: string; difficulty: "easy" | "medium" | "hard"; language: "en" | "ur"; authorName?: string; status: Status; version: number; reviewNote?: string | null; createdBy?: number | string; paperIds: number[]; choices: Choice[] };
 type DraftQuestion = { prompt: string; choices: string[]; correctChoice: string; explanation: string; language: "en" | "ur"; questionImageUrl?: string | null; choiceImageUrls?: Array<string | null> };
 type PreviewRow = DraftQuestion & { rowNumber: number; errors: string[] };
-type BulkExistingMatch = { id: number; prompt: string; status: Status; attachedPaperIds: number[] };
+type ExistingQuestionMatch = { id: number; prompt: string; status: Status; topicId: number; topicName: string; subjectName: string; attachedPaperIds: number[]; similarity?: number; exact?: boolean };
+type BulkExistingMatch = ExistingQuestionMatch;
 type Props = { topics: Topic[]; papers: Paper[]; canManagePapers: boolean; canAddQuestionsToPapers: boolean; canQuickCreatePaper: boolean; canPublish: boolean; canDirectPublish: boolean; isSuperAdmin: boolean; canDelete: boolean; canCreateMcqs: boolean; canReviewMcqs: boolean; canEditOwnMcqs: boolean; canEditAnyMcqs: boolean; currentUserId: string; initialPaperId: number | null; initialSearch?: string; initialStatus?: string; startInBank?: boolean; onUpdated: () => Promise<void> };
 
 const emptyDraft: DraftQuestion = { prompt: "", choices: ["", "", "", ""], correctChoice: "", explanation: "", language: "en", questionImageUrl: null, choiceImageUrls: [null, null, null, null] };
@@ -212,6 +213,35 @@ function SearchPicker({ id, label, value, options, placeholder, onChange, action
   </div>;
 }
 
+function BulkPreviewTable({ rows, matches, selectedPaperIds, onRemove }: {
+  rows: PreviewRow[];
+  matches: Record<number, BulkExistingMatch>;
+  selectedPaperIds: number[];
+  onRemove: (row: number) => void;
+}) {
+  return <div className="mcq-preview-wrap">
+    <div className="admin-panel-heading"><div>
+      <h4>Preview · {rows.filter((row) => !row.errors.length).length} valid / {rows.length} rows{Object.keys(matches).length ? ` · ${Object.keys(matches).length} matches across topics` : ""}</h4>
+      <p>{selectedPaperIds.length ? "Exact matches are skipped and linked to the selected paper. Similar questions are flagged for review. Paper imports remain limited to 100 rows." : "Exact matches from any topic are skipped. Similar questions are flagged; remove unwanted variants before importing. Category-only imports have no 100-question cap."}</p>
+    </div></div>
+    <div className="mcq-preview-table-wrap"><table className="mcq-preview-table">
+      <thead><tr><th>Row</th><th>Question</th><th>Options</th><th>Answer</th><th>Validation / Existing MCQ</th><th>Action</th></tr></thead>
+      <tbody>{rows.map((row) => {
+        const match = matches[row.rowNumber];
+        const alreadyLinked = Boolean(match && selectedPaperIds.length && selectedPaperIds.every((id) => match.attachedPaperIds.includes(id)));
+        return <tr key={row.rowNumber} className={row.errors.length ? "has-errors" : match ? "has-existing-match" : ""}>
+          <td>{row.rowNumber}</td>
+          <td><LocalizedText>{row.prompt}</LocalizedText></td>
+          <td>{row.choices.map((choice, index) => <span key={index}>{questionLabels[index]}) <LocalizedText>{choice}</LocalizedText>{index < row.choices.length - 1 ? " · " : ""}</span>)}</td>
+          <td>{row.correctChoice}</td>
+          <td>{row.errors.length ? row.errors.join(" ") : match ? <><strong>{match.exact ? "Exact duplicate" : `Possible match · ${match.similarity ?? 0}% similar`} · MCQ #{match.id}</strong><small>{match.subjectName} › {match.topicName} · {match.status.replace("_", " ")}{match.exact ? alreadyLinked ? " · already in selected paper" : selectedPaperIds.length ? " · will link without creating a copy" : " · duplicate will be skipped" : " · review before importing this variant"}</small></> : "Ready to create"}</td>
+          <td><button type="button" className="text-link text-danger" onClick={() => onRemove(row.rowNumber)}>Remove row</button></td>
+        </tr>;
+      })}</tbody>
+    </table></div>
+  </div>;
+}
+
 export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAddQuestionsToPapers, canQuickCreatePaper, canPublish, canDirectPublish, isSuperAdmin, canDelete, canCreateMcqs, canReviewMcqs, canEditOwnMcqs, canEditAnyMcqs, currentUserId, initialPaperId, initialSearch = "", initialStatus = "all", startInBank = false, onUpdated }: Props) {
   const [mode, setMode] = useState<"quick" | "bulk" | "bank">(startInBank || !canCreateMcqs ? "bank" : "quick");
   const [paperOptions, setPaperOptions] = useState(papers);
@@ -229,7 +259,7 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
   const [busy, setBusy] = useState(false);
   const [imageBusy, setImageBusy] = useState(false);
   const [error, setError] = useState("");
-  const [similar, setSimilar] = useState<Array<{ id: number; prompt: string; similarity: number; exact?: boolean }>>([]);
+  const [similar, setSimilar] = useState<ExistingQuestionMatch[]>([]);
   const [sessionQuestions, setSessionQuestions] = useState<Question[]>([]);
   const [sessionCount, setSessionCount] = useState(0);
   const [bankQuestions, setBankQuestions] = useState<Question[]>([]);
@@ -388,20 +418,24 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
     return () => window.clearTimeout(timeout);
   }, [mode, loadBank]);
 
+  const similarityChoicesKey = draft.choices.join("\n");
   useEffect(() => {
-    if (draft.prompt.trim().length < 12 || !topicId) {
+    if (draft.prompt.trim().length < 12) {
       const timeout = window.setTimeout(() => setSimilar([]), 0);
       return () => window.clearTimeout(timeout);
     }
     const controller = new AbortController();
     const timeout = window.setTimeout(async () => {
       try {
-        const result = await adminRequest<{ similar: Array<{ id: number; prompt: string; similarity: number; exact?: boolean }> }>("/api/admin/questions/similar", "POST", { topicId: Number(topicId), questionId: editingId, prompt: draft.prompt });
+        const result = await adminRequest<{ similar: ExistingQuestionMatch[] }>("/api/admin/questions/similar", "POST", {
+          topicId: Number(topicId) || undefined, questionId: editingId, prompt: draft.prompt,
+          choices: similarityChoicesKey.split("\n"), correctChoice: draft.correctChoice, paperId: Number(paperId) || undefined,
+        });
         if (!controller.signal.aborted) setSimilar(result.similar ?? []);
       } catch (cause) { if (!controller.signal.aborted) { setSimilar([]); toastNotify.error(getErrorMessage(cause, "Could not check for similar MCQs.")); } }
     }, 500);
     return () => { controller.abort(); window.clearTimeout(timeout); };
-  }, [draft.prompt, topicId, editingId]);
+  }, [draft.prompt, similarityChoicesKey, draft.correctChoice, topicId, paperId, editingId]);
 
   function rememberSession(ids: number[], count: number) {
     try {
@@ -411,6 +445,23 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
   }
 
   function selectedPaper() { return paperOptions.find((paper) => String(paper.id) === paperId); }
+
+  async function attachExistingQuestion(match: ExistingQuestionMatch) {
+    if (!paperId) {
+      setError(`MCQ #${match.id} already exists in ${match.subjectName} › ${match.topicName}. Select a paper in the context bar to attach it.`);
+      return;
+    }
+    setBusy(true); setError("");
+    try {
+      await adminRequest("/api/admin/questions/bulk", "POST", { action: "add-to-paper", ids: [match.id], paperId: Number(paperId) }, confirm);
+      setPaperOptions((items) => items.map((item) => item.id === Number(paperId) && !item.questionIds.includes(match.id)
+        ? { ...item, questionIds: [...item.questionIds, match.id], questionCount: item.questionCount + 1 }
+        : item));
+      toastNotify.success(`Existing MCQ #${match.id} linked to ${selectedPaper()?.title ?? "the selected paper"}; no duplicate was created.`);
+      await onUpdated();
+    } catch (cause) { const message = getErrorMessage(cause, "Could not attach the existing MCQ to this paper."); setError(message); toastNotify.error(message); }
+    finally { setBusy(false); }
+  }
 
   async function uploadImage(file: File | undefined, target: "question" | number) {
     if (!file) return;
@@ -438,7 +489,19 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
       const explanation = draft.explanation.trim();
       const language = detectQuestionLanguage([draft.prompt, ...draft.choices, richTextToPlainText(explanation)]);
       const body = { id: editingId ?? undefined, expectedVersion: editingId ? editingVersion : undefined, topicId: Number(topicId), paperIds, prompt: draft.prompt.trim(), questionImageUrl: draft.questionImageUrl ?? null, choiceImageUrls: draft.choiceImageUrls ?? [null, null, null, null], choices: draft.choices.map((choice) => choice.trim()), correctChoice: draft.correctChoice, explanation, sourceNote: sourceNote.trim(), difficulty, language };
-      const result = await adminRequest<{ id?: number; version?: number; status?: Status }>("/api/admin/questions", editingId ? "PATCH" : "POST", body, confirm);
+      const result = await adminRequest<{ id?: number; version?: number; status?: Status; existing?: boolean; duplicate?: ExistingQuestionMatch }>("/api/admin/questions", editingId ? "PATCH" : "POST", body, confirm);
+      if (result.existing && result.id) {
+        setDraft(emptyDraft); setSimilar([]); setShowQuestionImage(false); setOpenChoiceImages([false, false, false, false]);
+        const selected = selectedPaper();
+        if (selected) setPaperOptions((items) => items.map((item) => item.id === selected.id && !item.questionIds.includes(result.id!)
+          ? { ...item, questionIds: [...item.questionIds, result.id!], questionCount: item.questionCount + 1 }
+          : item));
+        toastNotify.success(`Existing MCQ #${result.id} linked to ${selected?.title ?? "the selected paper"}; no duplicate was created.`);
+        await onUpdated();
+        if (closeAfterSave) setMode("bank");
+        else window.setTimeout(() => questionRef.current?.focus(), 0);
+        return;
+      }
       const id = editingId ?? Number(result.id);
       const topic = topics.find((item) => item.id === Number(topicId));
       const existing = sessionQuestions.find((question) => question.id === id);
@@ -583,9 +646,13 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
   async function checkExistingBulkRows(rows: PreviewRow[]) {
     const selectedPaperIds = bulkPaperIds ?? (paperId ? [Number(paperId)] : []);
     setExistingBulkMatches({});
-    if (!selectedPaperIds.length || !rows.length) return;
-    if (rows.length > 100) {
-      setError("Paper imports are limited to 100 MCQs at a time. Category-only imports have no 100-question cap.");
+    if (!rows.length) return;
+    if (!topicId) {
+      setError("Choose a category before checking pasted MCQs for duplicates.");
+      return;
+    }
+    if (rows.length > 500) {
+      setError("Check up to 500 MCQs per preview. Category-only imports can still be split across multiple previews without a 100-question limit.");
       return;
     }
     setMatchingBulkRows(true);
@@ -595,7 +662,9 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
         questions: rows.map(({ prompt, choices, correctChoice, explanation, rowNumber }) => ({ prompt, choices, correctChoice, explanation, rowNumber })),
       });
       setExistingBulkMatches(Object.fromEntries(response.matches.map((match) => [match.row, match])));
-      if (response.matches.length) toastNotify.info(`${response.matches.length} existing MCQ${response.matches.length === 1 ? "" : "s"} found. They will be linked to the selected paper instead of duplicated.`);
+      if (response.matches.length) toastNotify.info(selectedPaperIds.length
+        ? `${response.matches.length} existing MCQ${response.matches.length === 1 ? "" : "s"} found across topics. They will be linked to the selected paper instead of duplicated.`
+        : `${response.matches.length} exact duplicate${response.matches.length === 1 ? "" : "s"} found across topics. They will be skipped during import.`);
     } catch (cause) {
       const message = getErrorMessage(cause, "Could not check the category for existing MCQs.");
       setError(message);
@@ -611,6 +680,15 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
     await checkExistingBulkRows(rows);
   }
 
+  function removeBulkRow(rowNumber: number) {
+    setBulkRows((rows) => rows.filter((row) => row.rowNumber !== rowNumber));
+    setExistingBulkMatches((matches) => {
+      const next = { ...matches };
+      delete next[rowNumber];
+      return next;
+    });
+  }
+
   async function importRows() {
     if (!bulkRows.length) { setError("Add MCQs to the preview first."); return; }
     if (!topicId || sourceNote.trim().length < 4) { setError("Choose a category and enter a source note in the context bar first."); return; }
@@ -618,7 +696,7 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
     if (selectedPaperIds.length && bulkRows.length > 100) { setError("Paper imports are limited to 100 MCQs at a time. Remove the paper selection to import more into the category."); return; }
     setBusy(true); setError("");
     try {
-      const result = await adminRequest<{ ids: number[]; count: number; attachedExistingCount: number; skipped: number; results: Array<{ row: number; id?: number; ok: boolean; existing?: boolean; error?: string }> }>("/api/admin/questions/bulk", "POST", {
+      const result = await adminRequest<{ ids: number[]; count: number; existingCount: number; attachedExistingCount: number; skipped: number; results: Array<{ row: number; id?: number; ok: boolean; existing?: boolean; error?: string }> }>("/api/admin/questions/bulk", "POST", {
         action: "import", topicId: Number(topicId), paperIds: selectedPaperIds, difficulty, sourceNote: sourceNote.trim(), status: "draft",
         questions: bulkRows.map(({ prompt, choices, correctChoice, explanation, rowNumber }) => ({ prompt, choices, correctChoice, explanation, rowNumber })),
       });
@@ -649,7 +727,8 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
       setCsvFileName("");
       if (!remainingRows.length) setBulkPaperIds(null);
       if (remainingRows.length) toastNotify.warning(`Imported ${result.count} new MCQs and attached ${result.attachedExistingCount} existing. ${remainingRows.length} row${remainingRows.length === 1 ? "" : "s"} skipped; review the highlighted errors and retry.`);
-      else toastNotify.success(`Imported ${result.count} new MCQs and attached ${result.attachedExistingCount} existing MCQs.`);
+      else if (selectedPaperIds.length) toastNotify.success(`Imported ${result.count} new MCQs and linked ${result.attachedExistingCount} existing MCQs to the selected paper${selectedPaperIds.length === 1 ? "" : "s"}.`);
+      else toastNotify.success(`Imported ${result.count} new MCQs; skipped ${result.existingCount ?? 0} exact duplicates already found across topics.`);
       await onUpdated();
     } catch (cause) { const message = getErrorMessage(cause, "Bulk import failed; no MCQs were saved."); setError(message); toastNotify.error(message); }
     finally { setBusy(false); }
@@ -710,14 +789,14 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
           <label htmlFor="fast-mcq-question">Question text</label>
           <textarea ref={questionRef} id="fast-mcq-question" lang={containsUrduScript(draft.prompt) ? "ur" : "en"} dir="auto" className={containsUrduScript(draft.prompt) ? "urdu-aware-input" : undefined} value={draft.prompt} onChange={(event) => setDraft((current) => { const prompt = event.target.value; return { ...current, prompt, language: detectQuestionLanguage([prompt, ...current.choices, current.explanation]) }; })} rows={3} minLength={8} maxLength={1500} required placeholder="Enter the question" />
           <div className="mcq-attach-row">{!showQuestionImage && !draft.questionImageUrl && <button type="button" className="text-link" onClick={() => setShowQuestionImage(true)}>Add question image</button>}{(showQuestionImage || draft.questionImageUrl) && <div className="mcq-attach-field"><label htmlFor="fast-mcq-question-image">Question image <span className="mcq-optional">optional · PNG, JPEG, or WebP · max 5 MB</span></label><input id="fast-mcq-question-image" className="mcq-file-input" type="file" accept="image/png,image/jpeg,image/webp" disabled={imageBusy} onChange={(event) => void uploadImage(event.target.files?.[0], "question")} />{draft.questionImageUrl && <div className="mcq-image-preview"><Image src={draft.questionImageUrl} alt="Question attachment preview" width={160} height={160} unoptimized /><button type="button" className="text-link" onClick={() => { setDraft({ ...draft, questionImageUrl: null }); setShowQuestionImage(false); }}>Remove image</button></div>}</div>}</div>
-          {similar.length > 0 && <aside className="mcq-similar-warning" role="status"><strong>{similar.some((item) => item.exact) ? "Duplicate question found after text normalization" : "Possible similar MCQ in this topic"}</strong>{similar.map((item) => <small key={item.id}>#{item.id} · {item.exact ? "normalized text match" : `${item.similarity}% similar`} · <LocalizedText>{item.prompt}</LocalizedText></small>)}<small>This is only a warning; you can still save the question.</small></aside>}
+          {similar.length > 0 && <aside className="mcq-similar-warning" role="status"><strong>{similar.some((item) => item.exact) ? "Exact duplicate found across topics" : "Possible similar MCQs across topics"}</strong>{similar.map((item) => <div className="mcq-duplicate-match" key={item.id}><small>MCQ #{item.id} · {item.exact ? "Exact match" : `${item.similarity ?? 0}% similar`} · {item.subjectName} › {item.topicName} · {item.status.replace("_", " ")}</small><p><LocalizedText>{item.prompt}</LocalizedText></p>{canAddQuestionsToPapers && <button type="button" className="text-link" disabled={busy || !paperId} onClick={() => void attachExistingQuestion(item)}>{paperId ? `Link existing #${item.id} to selected paper` : "Select a paper to link this existing MCQ"}</button>}</div>)}{similar.some((item) => item.exact) && <button type="button" className="text-link text-danger" disabled={busy} onClick={() => { setDraft(emptyDraft); setSimilar([]); }}>Skip duplicate and clear this entry</button>}<small>{similar.some((item) => item.exact) ? "Saving an exact duplicate is blocked. Link the existing question to a paper or skip this entry." : "Review these matches before saving. Remove unwanted new variants from the bulk preview before importing."}</small></aside>}
           <div className="mcq-options-heading"><span>Answer options</span><small>Choose the radio on the correct option.</small></div>
           <div className="mcq-option-grid">{draft.choices.map((choice, index) => <div className={`mcq-option-card ${draft.correctChoice === questionLabels[index] ? "is-correct" : ""}`} key={questionLabels[index]}><div className="mcq-option-head"><span className="mcq-option-letter">{questionLabels[index]}</span><label className="mcq-correct-radio" htmlFor={`fast-mcq-correct-${index}`}><input id={`fast-mcq-correct-${index}`} type="radio" name="fast-mcq-correct" value={questionLabels[index]} checked={draft.correctChoice === questionLabels[index]} onChange={() => setDraft({ ...draft, correctChoice: questionLabels[index] })} />{draft.correctChoice === questionLabels[index] ? "Correct answer" : "Mark correct"}</label><button type="button" className="text-link" onClick={() => setOpenChoiceImages((current) => current.map((open, choiceIndex) => choiceIndex === index ? !open : open))}>{draft.choiceImageUrls?.[index] ? "Image added" : "Add image"}</button></div><input id={`fast-mcq-option-${index}`} aria-label={`Option ${questionLabels[index]}`} value={choice} lang={containsUrduScript(choice) || (!choice.trim() && containsUrduScript(draft.prompt)) ? "ur" : "en"} dir="auto" className={containsUrduScript(choice) || (!choice.trim() && containsUrduScript(draft.prompt)) ? "urdu-aware-input" : undefined} onChange={(event) => setDraft((current) => { const choices = current.choices.map((item, choiceIndex) => choiceIndex === index ? event.target.value : item); return { ...current, choices, language: detectQuestionLanguage([current.prompt, ...choices, current.explanation]) }; })} maxLength={800} required placeholder={`Option ${questionLabels[index]}`} />{(openChoiceImages[index] || draft.choiceImageUrls?.[index]) && <div className="mcq-attach-field"><label htmlFor={`fast-mcq-option-image-${index}`}>Option {questionLabels[index]} image <span className="mcq-optional">optional</span></label><input id={`fast-mcq-option-image-${index}`} className="mcq-file-input" type="file" accept="image/png,image/jpeg,image/webp" disabled={imageBusy} onChange={(event) => void uploadImage(event.target.files?.[0], index)} />{draft.choiceImageUrls?.[index] && <div className="mcq-image-preview"><Image src={draft.choiceImageUrls[index] ?? ""} alt={`Option ${questionLabels[index]} attachment preview`} width={120} height={120} unoptimized /><button type="button" className="text-link" onClick={() => setDraft({ ...draft, choiceImageUrls: (draft.choiceImageUrls ?? [null, null, null, null]).map((url, choiceIndex) => choiceIndex === index ? null : url) })}>Remove image</button></div>}</div>}</div>)}</div>
           <label id="fast-mcq-explanation-label">Explanation <span className="mcq-optional">optional · formatting supported</span></label>
           <ExplanationEditor value={draft.explanation} disabled={busy || imageBusy} onChange={(explanation) => setDraft((current) => ({ ...current, explanation, language: detectQuestionLanguage([current.prompt, ...current.choices, richTextToPlainText(explanation)]) }))} />
           <small className={`mcq-explanation-count${richTextToPlainText(draft.explanation).length > 3000 ? " is-over-limit" : ""}`}>{richTextToPlainText(draft.explanation).length.toLocaleString()} / 3,000 characters</small>
           {editBaseline && editingStatus === "published" && <section className="mcq-edit-diff" aria-label="Before and after edit comparison"><div><span className="eyebrow">EDIT REVIEW</span><strong>Before / after</strong><small>This published MCQ will return to review when saved.</small></div><div className="mcq-diff-columns"><article><b>Before</b><p><LocalizedText>{editBaseline.prompt}</LocalizedText></p><ol>{editBaseline.choices.map((choice) => <li key={choice.label}>{choice.label}) <LocalizedText>{choice.text}</LocalizedText></li>)}</ol><small>Answer: {editBaseline.correctChoice}</small></article><article><b>After</b><p><LocalizedText>{draft.prompt || "Question text not entered"}</LocalizedText></p><ol>{draft.choices.map((choice, index) => <li key={questionLabels[index]}>{questionLabels[index]}) <LocalizedText>{choice || "Empty option"}</LocalizedText></li>)}</ol><small>Answer: {draft.correctChoice || "Not selected"}</small></article></div></section>}
-          <div className="mcq-save-bar"><button className="button button-primary" type="submit" disabled={busy || imageBusy}>{busy ? "Saving…" : editingId ? "Save changes" : <>Save and add next <span>· Ctrl+Enter</span></>}</button><button className="button button-light" type="button" disabled={busy || imageBusy} onClick={() => void saveQuestion(true)}>Save and close</button>{editingId && <button className="button button-light" type="button" disabled={busy || imageBusy} onClick={() => { setEditingId(null); setEditingPaperIds([]); setDraft(emptyDraft); setShowQuestionImage(false); setOpenChoiceImages([false, false, false, false]); }}>Cancel edit</button>}<span className="mcq-save-hint">Saved as a draft. Send it to review from the MCQ bank.</span></div>
+          <div className="mcq-save-bar"><button className="button button-primary" type="submit" disabled={busy || imageBusy || (!editingId && similar.some((item) => item.exact) && !paperId)}>{busy ? "Saving…" : !editingId && similar.some((item) => item.exact) ? "Link existing MCQ" : editingId ? "Save changes" : <>Save and add next <span>· Ctrl+Enter</span></>}</button><button className="button button-light" type="button" disabled={busy || imageBusy || (!editingId && similar.some((item) => item.exact) && !paperId)} onClick={() => void saveQuestion(true)}>{!editingId && similar.some((item) => item.exact) ? "Link and close" : "Save and close"}</button>{editingId && <button className="button button-light" type="button" disabled={busy || imageBusy} onClick={() => { setEditingId(null); setEditingPaperIds([]); setDraft(emptyDraft); setShowQuestionImage(false); setOpenChoiceImages([false, false, false, false]); }}>Cancel edit</button>}<span className="mcq-save-hint">Exact duplicates are reused instead of copied to another topic or paper.</span></div>
           {canCreateMcqs && <p className="form-hint">{canDirectPublish ? "Saving keeps the MCQ as a draft. You can publish it directly when its subject and topic are published, or send it through review." : "Saving keeps the MCQ as a draft. It stays off the public site until you submit it, a reviewer approves it, and someone with publish permission publishes it. The subject and topic must already be published."}</p>}
         </form><div className="mcq-entry-preview-column"><aside className="mcq-live-preview" aria-label="Learner view preview"><div className="mcq-live-preview-head"><strong>Learner view</strong><span>{draft.language === "ur" ? "اردو · RTL" : "English · LTR"}</span></div><article><p><LocalizedText>{draft.prompt || "Your question preview will appear here."}</LocalizedText></p>{draft.questionImageUrl && <Image src={draft.questionImageUrl} alt="Question preview" width={640} height={360} unoptimized />}{draft.choices.map((choice, index) => <div key={questionLabels[index]} className={draft.correctChoice === questionLabels[index] ? "is-preview-answer" : ""}><b>{questionLabels[index]}</b><LocalizedText>{choice || `Option ${questionLabels[index]}`}</LocalizedText>{draft.choiceImageUrls?.[index] && <Image src={draft.choiceImageUrls[index] ?? ""} alt={`Option ${questionLabels[index]} preview`} width={480} height={260} unoptimized />}</div>)}<small>The answer key stays hidden until the learner submits.</small></article></aside>
           <SessionList questions={sessionQuestions} topics={topics} papers={paperOptions} selectedPaperId={paperId ? Number(paperId) : null} canManagePapers={canManagePapers} canPublish={canPublish} canDirectPublish={canDirectPublish} canDelete={canDelete} canReviewMcqs={canReviewMcqs} canCreateMcqs={canCreateMcqs} canEditOwnMcqs={canEditOwnMcqs} canEditAnyMcqs={canEditAnyMcqs} currentUserId={currentUserId} onEdit={editQuestion} onAction={sessionAction} />
@@ -733,8 +812,8 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
       <label className="mcq-csv-upload" htmlFor="mcq-csv-file">Upload CSV <input id="mcq-csv-file" type="file" accept=".csv,text/csv" onChange={(event) => void handleCsvFile(event)} /></label>
       {csvFileName && <p className="admin-helper">Loaded {csvFileName}. You can also edit the parsed source below.</p>}
       <textarea className={`mcq-bulk-textarea ${containsUrduScript(pasteText) ? "urdu-aware-input" : ""}`} lang={containsUrduScript(pasteText) ? "ur" : "en"} dir="auto" value={pasteText} onChange={(event) => setPasteText(event.target.value)} rows={12} placeholder={`Q: Which word is a noun?\nA) Quickly\nB) Honest\nC) Teacher\nD) Run\nAnswer: C\nExplanation: A teacher is a person.\n\nQ: ...`} />
-      <div className="admin-inline-actions"><button type="button" className="button button-light" disabled={matchingBulkRows} onClick={() => void previewText()}>Preview pasted MCQs</button>{bulkRows.length > 0 && <button type="button" className="button button-primary" disabled={busy || matchingBulkRows || !bulkRows.some((row) => !row.errors.length)} onClick={() => void importRows()}>{matchingBulkRows ? "Checking category…" : busy ? "Importing…" : `${bulkPaperIds?.length || paperId ? "Import / attach" : "Import"} ${bulkRows.filter((row) => !row.errors.length).length} MCQs`}</button>}</div>
-      {bulkRows.length > 0 && <div className="mcq-preview-wrap"><div className="admin-panel-heading"><div><h4>Preview · {bulkRows.filter((row) => !row.errors.length).length} valid / {bulkRows.length} rows{Object.keys(existingBulkMatches).length ? ` · ${Object.keys(existingBulkMatches).length} already in category` : ""}</h4><p>{bulkPaperIds?.length || paperId ? "Existing matches will be linked to the selected paper instead of duplicated. Paper batches are limited to 100 rows; category-only imports have no 100-question cap." : "Category-only imports have no 100-question cap. Valid rows import together in one transaction."}</p></div></div><div className="mcq-preview-table-wrap"><table className="mcq-preview-table"><thead><tr><th>Row</th><th>Question</th><th>Options</th><th>Answer</th><th>Validation / Existing MCQ</th></tr></thead><tbody>{bulkRows.map((row) => { const match = existingBulkMatches[row.rowNumber]; return <tr key={row.rowNumber} className={row.errors.length ? "has-errors" : match ? "has-existing-match" : ""}><td>{row.rowNumber}</td><td><LocalizedText>{row.prompt}</LocalizedText></td><td>{row.choices.map((choice, index) => <span key={index}>{questionLabels[index]}) <LocalizedText>{choice}</LocalizedText>{index < row.choices.length - 1 ? " · " : ""}</span>)}</td><td>{row.correctChoice}</td><td>{row.errors.length ? row.errors.join(" ") : match ? <>{match.prompt === row.prompt ? "Existing" : "Existing match"} MCQ #{match.id}{match.attachedPaperIds.length === (bulkPaperIds ?? (paperId ? [Number(paperId)] : [])).length ? " · already attached" : " · will attach, no duplicate created"}</> : "Ready to create"}</td></tr>; })}</tbody></table></div></div>}
+      <div className="admin-inline-actions"><button type="button" className="button button-light" disabled={matchingBulkRows} onClick={() => void previewText()}>Preview pasted MCQs</button>{bulkRows.length > 0 && <button type="button" className="button button-primary" disabled={busy || matchingBulkRows || !bulkRows.some((row) => !row.errors.length)} onClick={() => void importRows()}>{matchingBulkRows ? "Checking all topics…" : busy ? "Importing…" : `${bulkPaperIds?.length || paperId ? "Import / attach" : "Import"} ${bulkRows.filter((row) => !row.errors.length).length} MCQs`}</button>}</div>
+      {bulkRows.length > 0 && <BulkPreviewTable rows={bulkRows} matches={existingBulkMatches} selectedPaperIds={bulkPaperIds ?? (paperId ? [Number(paperId)] : [])} onRemove={removeBulkRow} />}
     </section>}
 
     {mode === "bank" && <section className={`admin-panel mcq-bank-panel ${reviewQueueView ? "is-review-queue-mode" : ""}`}>
