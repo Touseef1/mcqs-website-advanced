@@ -3175,3 +3175,10 @@ body:has(.admin-dashboard) { background: #f1f2f7; }
 :root[data-theme="dark"] .mcq-icon-action-danger:hover { background: #392321; color: #ffc1b9; }
 :root[data-theme="dark"] .mcq-preview-choice.is-correct,
 :root[data-theme="dark"] .mcq-preview-correct-label { color: #8de1c5; }
+
+
+/* Render explicitly bilingual question text as separate English and Urdu lines. */
+.localized-text-bilingual { display: block; text-align: start; white-space: pre-wrap; }
+.localized-text-segment { display: block; unicode-bidi: isolate; line-height: 1.55; }
+.localized-text-segment-en { direction: ltr; text-align: left; }
+.localized-text-segment-ur { direction: rtl; text-align: right; line-height: 2.3; }
