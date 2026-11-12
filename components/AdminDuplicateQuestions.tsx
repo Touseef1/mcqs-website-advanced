@@ -5,7 +5,7 @@ import { ArrowRightLeft, Copy, Search, Trash2 } from "lucide-react";
 import { LocalizedText } from "@/components/LocalizedText";
 import { SitePagination } from "@/components/SitePagination";
 import { useConfirmModal } from "@/components/ConfirmModal";
-import { ApiResponseError, getErrorMessage, parseApiResponse } from "@/lib/error-message";
+import { ApiResponseError, getErrorMessage } from "@/lib/error-message";
 import { notify } from "@/lib/toast";
 
 type Paper = { id: number; title: string; status: string };
@@ -48,7 +48,10 @@ export function AdminDuplicateQuestions() {
     } finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const request = window.setTimeout(() => { void load(); }, 0);
+    return () => window.clearTimeout(request);
+  }, [load]);
 
   const entries = useMemo<DuplicateEntry[]>(() => data.groups.flatMap((group) => group.duplicates.map((duplicate) => ({ canonical: group.canonical, duplicate }))), [data.groups]);
   const filtered = useMemo(() => entries.filter(({ canonical, duplicate }) =>
