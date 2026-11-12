@@ -20,6 +20,33 @@ export async function POST(request: Request) {
   if (!principal || !requirePermission(principal, "mcq.create")) return NextResponse.json({ error: "Your role cannot check for duplicate MCQs." }, { status: 403 });
   if (!hasDatabase || !db) return NextResponse.json({ similar: [] });
   const body = await request.json().catch(() => null);
+  if (body?.action === "details") {
+    const requestedId = Number(body.questionId);
+    if (!Number.isSafeInteger(requestedId) || requestedId < 1) return NextResponse.json({ error: "Choose a valid MCQ." }, { status: 400 });
+    const [questionRows] = await db.execute<Array<RowDataPacket & {
+      id: number; question_text: string; explanation: string; source_note: string; correct_choice: string;
+      difficulty: string; language: string; question_image_url: string | null; status: string;
+      topic_id: number; topic_name: string; subject_name: string;
+    }>>(
+      `SELECT q.id, q.question_text, q.explanation, q.source_note, q.correct_choice, q.difficulty,
+              q.language, q.question_image_url, q.status, q.topic_id, t.name AS topic_name, s.name AS subject_name
+       FROM questions q JOIN topics t ON t.id = q.topic_id JOIN subjects s ON s.id = t.subject_id
+       WHERE q.id = ? AND q.status != 'archived' LIMIT 1`, [requestedId],
+    );
+    const questionRow = questionRows[0];
+    if (!questionRow) return NextResponse.json({ error: "This existing MCQ is no longer available." }, { status: 404 });
+    const [choiceRows] = await db.execute<Array<RowDataPacket & { label: string; choice_text: string; image_url: string | null }>>(
+      "SELECT label, choice_text, image_url FROM choices WHERE question_id = ? ORDER BY label", [requestedId],
+    );
+    return NextResponse.json({ question: {
+      id: questionRow.id, prompt: questionRow.question_text, explanation: questionRow.explanation,
+      sourceNote: questionRow.source_note, correctChoice: questionRow.correct_choice,
+      difficulty: questionRow.difficulty, language: questionRow.language, questionImageUrl: questionRow.question_image_url,
+      status: questionRow.status, topicId: questionRow.topic_id, topicName: questionRow.topic_name,
+      subjectName: questionRow.subject_name, paperIds: [], version: 1,
+      choices: choiceRows.map((choice) => ({ label: choice.label, text: choice.choice_text, imageUrl: choice.image_url })),
+    } }, { headers: { "Cache-Control": "no-store" } });
+  }
   const questionId = Number(body?.questionId) || 0;
   const prompt = typeof body?.prompt === "string" ? body.prompt.trim().slice(0, 1500) : "";
   const choices = Array.isArray(body?.choices) ? body.choices.map((choice: unknown) => typeof choice === "string" ? choice.trim() : "") : [];
