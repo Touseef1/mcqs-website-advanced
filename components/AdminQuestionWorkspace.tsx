@@ -292,6 +292,8 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
   const [existingBulkMatches, setExistingBulkMatches] = useState<Record<number, BulkExistingMatch>>({});
   const [matchingBulkRows, setMatchingBulkRows] = useState(false);
   const [bulkPaperIds, setBulkPaperIds] = useState<number[] | null>(null);
+  const [bulkImportConfirmOpen, setBulkImportConfirmOpen] = useState(false);
+  const [bulkImportTopicId, setBulkImportTopicId] = useState("");
   const [csvFileName, setCsvFileName] = useState("");
   const [newPaperOpen, setNewPaperOpen] = useState(false);
   const [newPaperBusy, setNewPaperBusy] = useState(false);
@@ -708,24 +710,32 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
     });
   }
 
-  async function importRows() {
+  function openBulkImportConfirmation() {
+    const validCount = bulkRows.filter((row) => !row.errors.length).length;
+    if (!validCount) { setError("Fix or remove the invalid rows before importing."); return; }
+    setError("");
+    setBulkImportTopicId(topicId);
+    setBulkImportConfirmOpen(true);
+  }
+
+  async function importRows(targetTopicId = topicId) {
     if (!bulkRows.length) { setError("Add MCQs to the preview first."); return; }
-    if (!topicId || sourceNote.trim().length < 4) { setError("Choose a category and enter a source note in the context bar first."); return; }
+    if (!targetTopicId || sourceNote.trim().length < 4) { setError("Choose a category and enter a source note before importing."); return; }
     const selectedPaperIds = bulkPaperIds ?? (paperId ? [Number(paperId)] : []);
     if (selectedPaperIds.length && bulkRows.length > 100) { setError("Paper imports are limited to 100 MCQs at a time. Remove the paper selection to import more into the category."); return; }
     setBusy(true); setError("");
     try {
       const result = await adminRequest<{ ids: number[]; count: number; existingCount: number; attachedExistingCount: number; skipped: number; results: Array<{ row: number; id?: number; ok: boolean; existing?: boolean; error?: string }> }>("/api/admin/questions/bulk", "POST", {
-        action: "import", topicId: Number(topicId), paperIds: selectedPaperIds, difficulty, sourceNote: sourceNote.trim(), status: "draft",
+        action: "import", topicId: Number(targetTopicId), paperIds: selectedPaperIds, difficulty, sourceNote: sourceNote.trim(), status: "draft",
         questions: bulkRows.map(({ prompt, choices, correctChoice, explanation, rowNumber }) => ({ prompt, choices, correctChoice, explanation, rowNumber })),
       });
-      const topic = topics.find((item) => item.id === Number(topicId));
+      const topic = topics.find((item) => item.id === Number(targetTopicId));
       const imported = result.results.flatMap((item): Question[] => {
         if (!item.ok || !item.id || item.existing) return [];
         const row = bulkRows.find((candidate) => candidate.rowNumber === item.row);
         if (!row) return [];
         return [{
-        id: item.id, topicId: Number(topicId), topicName: topic?.name ?? "Topic", subjectName: topic?.subject_name ?? "Subject",
+        id: item.id, topicId: Number(targetTopicId), topicName: topic?.name ?? "Topic", subjectName: topic?.subject_name ?? "Subject",
         prompt: row.prompt.trim(), explanation: row.explanation.trim(), sourceNote: sourceNote.trim(), correctChoice: row.correctChoice,
         difficulty, language: detectQuestionLanguage([row.prompt, ...row.choices, row.explanation]), status: "draft", paperIds: bulkPaperIds ?? (paperId ? [Number(paperId)] : []),
         version: 1,
@@ -733,6 +743,8 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
         }];
       });
       const updatedSession = [...imported.reverse(), ...sessionQuestions];
+      setTopicId(targetTopicId);
+      setBulkImportConfirmOpen(false);
       const nextCount = sessionCount + result.count;
       setSessionQuestions(updatedSession); setSessionCount(nextCount); rememberSession(updatedSession.map((item) => item.id), nextCount);
       const failed = result.results.filter((item) => !item.ok);
@@ -797,6 +809,14 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
     {paper && <p className="mcq-context-paper-note">New MCQs will be linked to <strong>{paper.title}</strong> in paper order.</p>}
   </section>;
 
+  const validBulkRowCount = bulkRows.filter((row) => !row.errors.length).length;
+  const destinationPaperIds = bulkPaperIds ?? (paperId ? [Number(paperId)] : []);
+  const destinationPaperNames = destinationPaperIds
+    .map((id) => paperOptions.find((item) => item.id === id)?.title)
+    .filter((title): title is string => Boolean(title));
+  const paperImportOverLimit = destinationPaperIds.length > 0 && validBulkRowCount > 100;
+  const bulkImportDisabled = busy || !bulkImportTopicId || sourceNote.trim().length < 4 || paperImportOverLimit;
+
   return <div className="admin-content-stack mcq-workspace">
     {canCreateMcqs && (mode === "quick" || mode === "bulk") && <div className="mcq-entry-page-heading"><div><h1>{mode === "quick" ? (editingId ? `Edit MCQ #${editingId}` : "Add MCQ") : "Paste multiple MCQs"}</h1><p>{mode === "quick" ? "Set the context once, then keep adding. Ctrl + Enter saves and continues." : "Paste question blocks or upload a CSV, then review every row before importing."}</p></div><div className="mcq-entry-heading-actions">{mode === "quick" && <span className="mcq-session-counter">{sessionCount} added this session</span>}<button type="button" className="button button-light" onClick={() => setMode("bank")}>MCQ bank</button>{mode === "quick" ? <button type="button" className="button button-light" onClick={() => setMode("bulk")}>Paste multiple MCQs</button> : <button type="button" className="button button-light" onClick={() => setMode("quick")}>Back to Add MCQ</button>}</div></div>}
     {canCreateMcqs && (mode === "quick" || mode === "bulk") && contextBar}
@@ -831,7 +851,7 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
       <label className="mcq-csv-upload" htmlFor="mcq-csv-file">Upload CSV <input id="mcq-csv-file" type="file" accept=".csv,text/csv" onChange={(event) => void handleCsvFile(event)} /></label>
       {csvFileName && <p className="admin-helper">Loaded {csvFileName}. You can also edit the parsed source below.</p>}
       <textarea className={`mcq-bulk-textarea ${containsUrduScript(pasteText) ? "urdu-aware-input" : ""}`} lang={containsUrduScript(pasteText) ? "ur" : "en"} dir="auto" value={pasteText} onChange={(event) => setPasteText(event.target.value)} rows={12} placeholder={`Q: Which word is a noun?\nA) Quickly\nB) Honest\nC) Teacher\nD) Run\nAnswer: C\nExplanation: A teacher is a person.\n\nQ: ...`} />
-      <div className="admin-inline-actions"><button type="button" className="button button-light" disabled={matchingBulkRows} onClick={() => void previewText()}>Preview pasted MCQs</button>{bulkRows.length > 0 && <button type="button" className="button button-primary" disabled={busy || matchingBulkRows || !bulkRows.some((row) => !row.errors.length)} onClick={() => void importRows()}>{matchingBulkRows ? "Checking all topics…" : busy ? "Importing…" : `${bulkPaperIds?.length || paperId ? "Import / attach" : "Import"} ${bulkRows.filter((row) => !row.errors.length).length} MCQs`}</button>}</div>
+      <div className="admin-inline-actions"><button type="button" className="button button-light" disabled={matchingBulkRows} onClick={() => void previewText()}>Preview pasted MCQs</button>{bulkRows.length > 0 && <button type="button" className="button button-primary" disabled={busy || matchingBulkRows || !bulkRows.some((row) => !row.errors.length)} onClick={openBulkImportConfirmation}>{matchingBulkRows ? "Checking all topics…" : "Review import details"} · {bulkRows.filter((row) => !row.errors.length).length} MCQs</button>}</div>
       {bulkRows.length > 0 && <BulkPreviewTable rows={bulkRows} matches={existingBulkMatches} selectedPaperIds={bulkPaperIds ?? (paperId ? [Number(paperId)] : [])} onRemove={removeBulkRow} onPreview={(id) => void previewExistingQuestion(id)} />}
     </section>}
 
@@ -869,7 +889,33 @@ export function AdminQuestionWorkspace({ topics, papers, canManagePapers, canAdd
       <SitePagination page={bankPage} pageCount={bankPages} pageSize={bankPageSize} total={bankTotal} disabled={bankLoading} onPageChange={setBankPage} onPageSizeChange={(size) => { setBankPageSize(size); setBankPage(1); }} ariaLabel={reviewQueueView ? "Review queue pages" : "MCQ bank pages"} className="mcq-bank-pagination" />
     </section>}
 
-    {previewQuestion && <div className="mcq-preview-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPreviewQuestion(null); }}><aside className="mcq-preview-drawer" role="dialog" aria-modal="true" aria-labelledby="mcq-preview-title"><div className="admin-panel-heading"><div><span className="eyebrow">{previewQuestionTitle}</span><h3 id="mcq-preview-title">MCQ #{previewQuestion.id}</h3></div><button type="button" className="mcq-icon-action" aria-label="Close MCQ preview" title="Close" onClick={() => setPreviewQuestion(null)}><X size={18} aria-hidden="true" /></button></div><p><LocalizedText>{previewQuestion.prompt}</LocalizedText></p>{previewQuestion.questionImageUrl && <Image src={previewQuestion.questionImageUrl} alt="Question image" width={640} height={360} unoptimized />}{previewQuestion.choices.map((choice) => <article className={`mcq-preview-choice${choice.label === previewQuestion.correctChoice ? " is-correct" : ""}`} key={choice.label}><b>{choice.label}</b><LocalizedText>{choice.text}</LocalizedText>{choice.label === previewQuestion.correctChoice && <strong className="mcq-preview-correct-label">Correct answer</strong>}{choice.imageUrl && <Image src={choice.imageUrl} alt={`Option ${choice.label} image`} width={480} height={280} unoptimized />}</article>)}<small>{previewQuestion.subjectName} › {previewQuestion.topicName} · {previewQuestion.sourceNote} · {previewQuestion.status}</small>{previewQuestion.explanation && <details open={previewQuestionTitle === "EXISTING MCQ DETAILS"}><summary>Explanation</summary><RichText value={previewQuestion.explanation} /></details>}</aside></div>}{newPaperOpen && <div className="mcq-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setNewPaperOpen(false); }}><section className="mcq-new-paper-modal" role="dialog" aria-modal="true" aria-labelledby="mcq-new-paper-title"><div className="admin-panel-heading"><div><span className="eyebrow">QUICK CREATE</span><h3 id="mcq-new-paper-title">New past paper</h3><p>It will be saved as a draft. Add verified MCQs and source details before publishing.</p></div><button type="button" className="text-link" onClick={() => setNewPaperOpen(false)}>Close</button></div><form className="admin-form" onSubmit={(event) => void createPaper(event)}><label htmlFor="quick-paper-exam">Exam / commission</label><input id="quick-paper-exam" value={newPaper.examName} onChange={(event) => setNewPaper({ ...newPaper, examName: event.target.value })} maxLength={160} minLength={2} required placeholder="FPSC, PPSC, NTS…" /><label htmlFor="quick-paper-title">Paper title</label><input id="quick-paper-title" value={newPaper.title} onChange={(event) => setNewPaper({ ...newPaper, title: event.target.value })} maxLength={220} minLength={3} required placeholder="FPSC Assistant Written Test" /><label htmlFor="quick-paper-year">Year</label><input id="quick-paper-year" type="number" value={newPaper.year} onChange={(event) => setNewPaper({ ...newPaper, year: event.target.value })} min="1900" max="2200" required /><p className="form-hint">Source note will be set to “{newPaper.examName || "Exam"} {newPaper.year} Past Paper”.</p>{newPaperError && <p className="form-error" role="alert">{newPaperError}</p>}<div className="admin-inline-actions"><button className="button button-primary" type="submit" disabled={newPaperBusy}>{newPaperBusy ? "Creating…" : "Create & select paper"}</button><button className="button button-light" type="button" onClick={() => setNewPaperOpen(false)}>Cancel</button></div></form></section></div>}
+    {previewQuestion && <div className="mcq-preview-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPreviewQuestion(null); }}><aside className="mcq-preview-drawer" role="dialog" aria-modal="true" aria-labelledby="mcq-preview-title"><div className="admin-panel-heading"><div><span className="eyebrow">{previewQuestionTitle}</span><h3 id="mcq-preview-title">MCQ #{previewQuestion.id}</h3></div><button type="button" className="mcq-icon-action" aria-label="Close MCQ preview" title="Close" onClick={() => setPreviewQuestion(null)}><X size={18} aria-hidden="true" /></button></div><p><LocalizedText>{previewQuestion.prompt}</LocalizedText></p>{previewQuestion.questionImageUrl && <Image src={previewQuestion.questionImageUrl} alt="Question image" width={640} height={360} unoptimized />}{previewQuestion.choices.map((choice) => <article className={`mcq-preview-choice${choice.label === previewQuestion.correctChoice ? " is-correct" : ""}`} key={choice.label}><b>{choice.label}</b><LocalizedText>{choice.text}</LocalizedText>{choice.label === previewQuestion.correctChoice && <strong className="mcq-preview-correct-label">Correct answer</strong>}{choice.imageUrl && <Image src={choice.imageUrl} alt={`Option ${choice.label} image`} width={480} height={280} unoptimized />}</article>)}<small>{previewQuestion.subjectName} › {previewQuestion.topicName} · {previewQuestion.sourceNote} · {previewQuestion.status}</small>{previewQuestion.explanation && <details open={previewQuestionTitle === "EXISTING MCQ DETAILS"}><summary>Explanation</summary><RichText value={previewQuestion.explanation} /></details>}</aside></div>}    {bulkImportConfirmOpen && (
+      <div className="mcq-modal-backdrop bulk-import-confirm-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) setBulkImportConfirmOpen(false); }}>
+        <section className="mcq-new-paper-modal bulk-import-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="bulk-import-confirm-title">
+          <div className="admin-panel-heading">
+            <div><span className="eyebrow">FINAL REVIEW · DRAFT IMPORT</span><h3 id="bulk-import-confirm-title">Confirm bulk MCQ import</h3><p>Check the destination before any new MCQs are saved.</p></div>
+            <button type="button" className="mcq-icon-action" aria-label="Close import review" title="Close" disabled={busy} onClick={() => setBulkImportConfirmOpen(false)}><X size={18} aria-hidden="true" /></button>
+          </div>
+          <div className="bulk-import-summary">
+            <div><span>Destination category</span><strong>{topicOptions.find((option) => option.value === bulkImportTopicId)?.label ?? "Choose a category below"}</strong></div>
+            <div><span>Paper assignment</span><strong>{destinationPaperNames.join(", ") || "Category only · no paper selected"}</strong></div>
+            <div><span>Difficulty</span><strong>{difficulty[0].toUpperCase() + difficulty.slice(1)}</strong></div>
+            <div><span>Source</span><strong>{sourceNote.trim() || "Not set"}</strong></div>
+            <div><span>New MCQs</span><strong>{validBulkRowCount} valid rows</strong></div>
+            <div><span>Existing matches</span><strong>{Object.keys(existingBulkMatches).length} found · exact duplicates will be reused</strong></div>
+            <div><span>Save status</span><strong className="bulk-import-draft-badge">Draft</strong></div>
+          </div>
+          <SearchPicker id="bulk-import-topic" label="Change destination category" value={bulkImportTopicId} options={topicOptions} placeholder="Search subject › topic" onChange={setBulkImportTopicId} />
+          <p className="form-hint">Only new valid MCQs are created as drafts. Exact existing MCQs are linked to the selected paper(s), when applicable. Invalid rows remain in the preview and are not imported.</p>
+          {paperImportOverLimit && <p className="form-error" role="alert">Paper imports are limited to 100 new MCQs. Remove the paper selection to import more into the category.</p>}
+          <div className="admin-inline-actions bulk-import-confirm-actions">
+            <button type="button" className="button button-light" disabled={busy} onClick={() => setBulkImportConfirmOpen(false)}>Cancel</button>
+            <button type="button" className="button button-primary" disabled={bulkImportDisabled} onClick={() => void importRows(bulkImportTopicId)}>{busy ? "Importing drafts…" : "Confirm and import drafts"}</button>
+          </div>
+        </section>
+      </div>
+    )}
+    {newPaperOpen && <div className="mcq-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setNewPaperOpen(false); }}><section className="mcq-new-paper-modal" role="dialog" aria-modal="true" aria-labelledby="mcq-new-paper-title"><div className="admin-panel-heading"><div><span className="eyebrow">QUICK CREATE</span><h3 id="mcq-new-paper-title">New past paper</h3><p>It will be saved as a draft. Add verified MCQs and source details before publishing.</p></div><button type="button" className="text-link" onClick={() => setNewPaperOpen(false)}>Close</button></div><form className="admin-form" onSubmit={(event) => void createPaper(event)}><label htmlFor="quick-paper-exam">Exam / commission</label><input id="quick-paper-exam" value={newPaper.examName} onChange={(event) => setNewPaper({ ...newPaper, examName: event.target.value })} maxLength={160} minLength={2} required placeholder="FPSC, PPSC, NTS…" /><label htmlFor="quick-paper-title">Paper title</label><input id="quick-paper-title" value={newPaper.title} onChange={(event) => setNewPaper({ ...newPaper, title: event.target.value })} maxLength={220} minLength={3} required placeholder="FPSC Assistant Written Test" /><label htmlFor="quick-paper-year">Year</label><input id="quick-paper-year" type="number" value={newPaper.year} onChange={(event) => setNewPaper({ ...newPaper, year: event.target.value })} min="1900" max="2200" required /><p className="form-hint">Source note will be set to “{newPaper.examName || "Exam"} {newPaper.year} Past Paper”.</p>{newPaperError && <p className="form-error" role="alert">{newPaperError}</p>}<div className="admin-inline-actions"><button className="button button-primary" type="submit" disabled={newPaperBusy}>{newPaperBusy ? "Creating…" : "Create & select paper"}</button><button className="button button-light" type="button" onClick={() => setNewPaperOpen(false)}>Cancel</button></div></form></section></div>}
   </div>;
 }
 
