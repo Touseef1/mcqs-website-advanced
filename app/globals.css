@@ -3221,3 +3221,25 @@ body:has(.admin-dashboard) { background: #f1f2f7; }
   .duplicate-mcq-search { flex-basis: auto; }
   .admin-duplicate-manager > .admin-panel-heading { flex-direction: column; }
 }
+
+
+/* Bulk import confirmation summary */
+.bulk-import-confirm-modal { display: grid; gap: 14px; width: min(100%, 650px); }
+.bulk-import-confirm-modal .admin-panel-heading { align-items: flex-start; margin: 0; }
+.bulk-import-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.bulk-import-summary > div { display: grid; gap: 4px; min-width: 0; padding: 10px 11px; border: 1px solid #e1e9e4; border-radius: 8px; background: #f8faf9; }
+.bulk-import-summary > div > span { color: #77857d; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.bulk-import-summary > div > strong { color: #283a31; font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+.bulk-import-draft-badge { justify-self: start; padding: 3px 8px; border-radius: 999px; background: #e8f5ef; color: #08785b !important; }
+.bulk-import-confirm-modal .mcq-picker { position: relative; z-index: 1; }
+.bulk-import-confirm-actions { justify-content: flex-end; margin-top: 0; }
+:root[data-theme="dark"] .bulk-import-summary > div { border-color: #3a4540; background: #232a27; }
+:root[data-theme="dark"] .bulk-import-summary > div > span { color: #a4b1aa; }
+:root[data-theme="dark"] .bulk-import-summary > div > strong { color: #e2e8e4; }
+:root[data-theme="dark"] .bulk-import-draft-badge { background: #183a31; color: #8de1c5 !important; }
+@media (max-width: 600px) {
+  .bulk-import-confirm-modal { max-height: 92vh; padding: 16px; }
+  .bulk-import-summary { grid-template-columns: 1fr; }
+  .bulk-import-confirm-actions { justify-content: stretch; }
+  .bulk-import-confirm-actions .button { flex: 1 1 auto; }
+}
