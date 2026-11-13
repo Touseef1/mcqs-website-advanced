@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LearnerHeaderAccount } from "@/components/LearnerHeaderAccount";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
 export function SiteHeader() {
@@ -13,9 +14,8 @@ export function SiteHeader() {
           <Link href="/subjects">Subjects</Link>
           <Link href="/past-papers">Past papers</Link>
           <Link href="/#practice">Practice tests</Link>
-          <Link href="/account">My account</Link>
         </nav>
-        <div className="header-actions"><ThemeToggle /></div>
+        <div className="header-actions"><LearnerHeaderAccount /><ThemeToggle /></div>
       </div>
     </header>
   );
