@@ -3243,3 +3243,47 @@ body:has(.admin-dashboard) { background: #f1f2f7; }
   .bulk-import-confirm-actions { justify-content: stretch; }
   .bulk-import-confirm-actions .button { flex: 1 1 auto; }
 }
+
+
+/* Improve learner header controls and dark-mode contrast on the public site. */
+.header-actions { gap: 12px; }
+.header-account-link { display: inline-flex; min-width: 96px; max-width: 220px; min-height: 40px; align-items: center; justify-content: center; gap: 8px; padding: 0 13px; overflow: hidden; border: 1px solid #cfddd4; border-radius: 10px; background: #fff; color: #234b3c; font-size: 12px; font-weight: 750; white-space: nowrap; transition: background-color .18s ease, border-color .18s ease, color .18s ease, transform .18s ease; }
+.header-account-link:hover { transform: translateY(-1px); border-color: #8eb8a0; background: #f1f8f3; }
+.header-account-link svg { flex: 0 0 auto; }
+.header-account-link span { overflow: hidden; text-overflow: ellipsis; }
+:root[data-theme="dark"] .header-account-link { border-color: #496358; background: #21332b; color: #e4f1e9; }
+:root[data-theme="dark"] .header-account-link:hover { border-color: #78bd99; background: #294337; color: #f4fff8; }
+:root[data-theme="dark"] .search-form { border: 1px solid #e1e9e1; background: #fff; }
+:root[data-theme="dark"] .search-form input { border: 0 !important; background-color: transparent !important; color: #16332e !important; }
+:root[data-theme="dark"] .search-form input::placeholder { color: #68796f; opacity: 1; }
+:root[data-theme="dark"] .search-form .search-icon { color: #62796c; }
+:root[data-theme="dark"] .section-heading p,
+:root[data-theme="dark"] .related-box p,
+:root[data-theme="dark"] .subject-card-copy > span:nth-child(2),
+:root[data-theme="dark"] .subject-count,
+:root[data-theme="dark"] .topic-description,
+:root[data-theme="dark"] .topic-card-bottom,
+:root[data-theme="dark"] .popular-topic small,
+:root[data-theme="dark"] .paper-card-type span,
+:root[data-theme="dark"] .paper-exam,
+:root[data-theme="dark"] .paper-description,
+:root[data-theme="dark"] .paper-card-footer,
+:root[data-theme="dark"] .stats-inner span,
+:root[data-theme="dark"] .stat-note,
+:root[data-theme="dark"] .closing-cta p,
+:root[data-theme="dark"] .footer-inner p,
+:root[data-theme="dark"] .footer-inner > span,
+:root[data-theme="dark"] .breadcrumbs,
+:root[data-theme="dark"] .page-intro p,
+:root[data-theme="dark"] .topic-hero p,
+:root[data-theme="dark"] .paper-detail-heading p,
+:root[data-theme="dark"] .quiz-page-heading p { color: #c1cec6; }
+:root[data-theme="dark"] .section-heading h2,
+:root[data-theme="dark"] .related-box h2,
+:root[data-theme="dark"] .popular-topic strong { color: #f0f6f2; }
+@media (max-width: 760px) {
+  .header-inner { gap: 8px; }
+  .header-actions { gap: 7px; }
+  .header-account-link { min-width: 40px; max-width: 148px; min-height: 36px; padding-inline: 9px; font-size: 11px; }
+  .header-account-link.is-signed-in span { max-width: 86px; }
+}
