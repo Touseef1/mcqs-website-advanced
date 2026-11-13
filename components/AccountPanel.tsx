@@ -91,6 +91,7 @@ export function AccountPanel({ learner }: { learner: LearnerPrincipal | null }) 
         body: JSON.stringify({ name, email, password, captchaAnswer }),
       });
       const data = await parseApiResponse<{ message?: string }>(response, "Could not sign in.");
+      window.dispatchEvent(new Event("mcqpath:learner-session-change"));
       if (mode === "register") setMessage(data.message || "Account created. Your email is verified and you are signed in.");
       router.refresh();
     } catch (submitError) {
@@ -102,7 +103,7 @@ export function AccountPanel({ learner }: { learner: LearnerPrincipal | null }) 
   }
 
   async function signOut() {
-    try { const response = await fetch("/api/learner/logout", { method: "POST" }); await parseApiResponse(response, "Could not sign out."); router.refresh(); }
+    try { const response = await fetch("/api/learner/logout", { method: "POST" }); await parseApiResponse(response, "Could not sign out."); window.dispatchEvent(new Event("mcqpath:learner-session-change")); router.refresh(); }
     catch (cause) { notify.error(getErrorMessage(cause, "Could not sign out.")); }
   }
 
