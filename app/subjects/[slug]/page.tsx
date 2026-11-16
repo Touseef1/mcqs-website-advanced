@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { TopicCard } from "@/components/SubjectCard";
 import { getSubject } from "@/lib/data";
+import { LoadingState } from "@/components/LoadingState";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -35,5 +36,5 @@ async function SubjectContent({ params }: Props) {
 }
 
 export default function SubjectPage({ params }: Props) {
-  return <Suspense fallback={<main className="content-page"><div className="loading-panel">Loading subject…</div></main>}><SubjectContent params={params} /></Suspense>;
+  return <Suspense fallback={<main className="content-page"><LoadingState label="Loading subject…" variant="section" /></main>}><SubjectContent params={params} /></Suspense>;
 }
