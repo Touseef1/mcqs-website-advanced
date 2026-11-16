@@ -67,7 +67,7 @@ export default async function Home() {
         <section className="section section-subjects" id="subjects">
           <div className="section-heading">
             <div><span className="eyebrow">FIND YOUR FOCUS</span><h2>Start with a subject</h2><p>Choose a subject and find a topic to practise at your own pace.</p></div>
-            <Link className="text-link" href="/subjects">Explore all subjects <span aria-hidden>↗</span></Link>
+            <Link className="text-link" href="/subjects">All subjects <span aria-hidden>↗</span></Link>
           </div>
           <div className="subject-grid">{subjects.map((subject) => <SubjectCard subject={subject} key={subject.slug} />)}</div>
         </section>
@@ -78,12 +78,12 @@ export default async function Home() {
         </section>
 
         <section className="section section-topics">
-          <div className="section-heading"><div><span className="eyebrow">QUICK START</span><h2>Popular topics</h2><p>Jump into a focused practice session.</p></div><Link className="text-link" href="/subjects">Browse topics <span aria-hidden>↗</span></Link></div>
+          <div className="section-heading"><div><span className="eyebrow">QUICK START</span><h2>Popular topics</h2><p>Jump into a focused practice session.</p></div><Link className="text-link" href="/subjects">All topics <span aria-hidden>↗</span></Link></div>
           <div className="topic-grid">{topics.slice(0, 6).map((topic) => <Link className="popular-topic" href={`/topics/${topic.slug}`} key={topic.slug}><span className="popular-topic-icon">↗</span><span><strong>{topic.name}</strong><small>{topic.subjectName} · {topic.questionCount} questions</small></span></Link>)}</div>
         </section>
 
         <section className="section paper-section">
-          <div className="section-heading"><div><span className="eyebrow">TEST YOUR PREPARATION</span><h2>Past papers</h2><p>Attempt source-verified exam papers and review each MCQ.</p></div><Link className="text-link" href="/past-papers">View all papers <span aria-hidden>↗</span></Link></div>
+          <div className="section-heading"><div><span className="eyebrow">TEST YOUR PREPARATION</span><h2>Past papers</h2><p>Attempt source-verified exam papers and review each MCQ.</p></div><Link className="text-link" href="/past-papers">All papers <span aria-hidden>↗</span></Link></div>
           {papers.length ? <div className="paper-grid">{papers.map((paper) => <Link className="paper-card" href={`/past-papers/${paper.slug}`} key={paper.slug}><span className="paper-card-type">{paper.exam} <span>· {paper.year}</span></span><strong>{paper.title}</strong><span className="paper-exam">{paper.type}</span><span className="paper-card-footer">{paper.publishedQuestionCount} MCQs <b>Open paper <span aria-hidden>→</span></b></span></Link>)}</div> : <div className="empty-state"><h2>No past papers published yet</h2><p>Past papers appear here after an admin publishes them.</p></div>}
         </section>
 
