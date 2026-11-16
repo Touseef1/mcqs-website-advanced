@@ -98,8 +98,13 @@ export async function GET(request: Request) {
   const source = (params.get("source") ?? "").trim().slice(0, 160);
   const language = params.get("language");
   const status = params.get("status") ?? "all";
-  const page = Math.max(1, Math.min(100000, Number(params.get("page")) || 1));
-  const pageSize = Math.max(10, Math.min(100, Number(params.get("pageSize")) || (search || params.has("page") ? 25 : 500)));
+  const requestedPage = Number(params.get("page"));
+  const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? Math.min(100000, requestedPage) : 1;
+  const requestedPageSize = Number(params.get("pageSize"));
+  const defaultPageSize = search || params.has("page") ? 25 : 100;
+  const pageSize = Number.isSafeInteger(requestedPageSize) && requestedPageSize > 0
+    ? Math.max(10, Math.min(100, requestedPageSize))
+    : defaultPageSize;
   const conditions: string[] = [];
   const values: Array<string | number> = [];
   if (!requirePermission(principal, "mcq.edit_any")) {
@@ -131,8 +136,8 @@ export async function GET(request: Request) {
             q.question_text AS prompt, q.explanation, q.source_note, q.correct_choice, q.difficulty, q.language, au.name AS author_name, q.status, q.review_note, q.created_by, q.updated_at, q.question_image_url
             , q.version
      ${from} LEFT JOIN admin_users au ON au.id = q.created_by ${where}
-     ORDER BY ${status === "in_review" ? "q.updated_at ASC, q.id ASC" : "q.updated_at DESC, q.id DESC"} LIMIT ? OFFSET ?`,
-    [...values, pageSize, offset],
+     ORDER BY ${status === "in_review" ? "q.updated_at ASC, q.id ASC" : "q.updated_at DESC, q.id DESC"} LIMIT ${pageSize} OFFSET ${offset}`,
+    values,
   );
   const questionIds = questions.map((question) => question.id);
   const [paperLinks] = questionIds.length

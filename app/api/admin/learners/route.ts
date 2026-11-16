@@ -49,8 +49,8 @@ export async function GET(request: Request) {
   const [learners] = await db.execute<Array<RowDataPacket & {
     id: number; name: string; email: string; status: "active" | "inactive"; created_at: string; email_verified_at: string | null;
   }>>(
-    `SELECT id, name, email, status, created_at, email_verified_at FROM learners ${where} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
-    [...values, pageSize, (currentPage - 1) * pageSize],
+    `SELECT id, name, email, status, created_at, email_verified_at FROM learners ${where} ORDER BY created_at DESC, id DESC LIMIT ${pageSize} OFFSET ${(currentPage - 1) * pageSize}`,
+    values,
   );
 
   return NextResponse.json({ learners: learners.map((learner) => ({ ...learner, id: String(learner.id) })), total, page: currentPage, pageSize, pageCount }, { headers: { "Cache-Control": "no-store" } });

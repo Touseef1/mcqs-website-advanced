@@ -54,8 +54,12 @@ export async function GET(request: Request) {
   const subjectId = Number(params.get("subjectId"));
   const topicId = Number(params.get("topicId"));
   const status = params.get("status") ?? "published";
-  const page = Math.max(1, Math.min(100000, Number(params.get("page")) || 1));
-  const pageSize = Math.max(10, Math.min(100, Number(params.get("pageSize")) || 25));
+  const requestedPage = Number(params.get("page"));
+  const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? Math.min(100000, requestedPage) : 1;
+  const requestedPageSize = Number(params.get("pageSize"));
+  const pageSize = Number.isSafeInteger(requestedPageSize) && requestedPageSize > 0
+    ? Math.max(10, Math.min(100, requestedPageSize))
+    : 25;
   const conditions: string[] = [];
   const values: Array<string | number> = [];
   if (search) {
@@ -76,8 +80,8 @@ export async function GET(request: Request) {
   const [rows] = await db.execute<PickerRow[]>(
     `SELECT q.id, q.topic_id, t.name AS topic_name, s.id AS subject_id,
             s.name AS subject_name, q.question_text AS prompt, q.source_note, q.status, q.difficulty
-     ${from} ${where} ORDER BY q.updated_at DESC, q.id DESC LIMIT ? OFFSET ?`,
-    [...values, pageSize, offset],
+     ${from} ${where} ORDER BY q.updated_at DESC, q.id DESC LIMIT ${pageSize} OFFSET ${offset}`,
+    values,
   );
   return NextResponse.json({ questions: formatQuestions(rows), total, page, pageSize }, { headers: { "Cache-Control": "no-store" } });
 }

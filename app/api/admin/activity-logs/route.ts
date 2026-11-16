@@ -17,8 +17,12 @@ export async function GET(request: Request) {
   if (!hasDatabase || !db) return NextResponse.json({ error: "Configure MySQL and apply migration 009 first." }, { status: 503 });
 
   const params = new URL(request.url).searchParams;
-  const page = Math.max(1, Math.min(100000, Number(params.get("page")) || 1));
-  const pageSize = Math.max(10, Math.min(100, Number(params.get("pageSize")) || 50));
+  const requestedPage = Number(params.get("page"));
+  const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? Math.min(100000, requestedPage) : 1;
+  const requestedPageSize = Number(params.get("pageSize"));
+  const pageSize = Number.isSafeInteger(requestedPageSize) && requestedPageSize > 0
+    ? Math.max(10, Math.min(100, requestedPageSize))
+    : 50;
   const userValue = params.get("userId")?.trim() ?? "";
   const userId = userValue ? Number(userValue) : null;
   if (userValue && (!Number.isSafeInteger(userId) || Number(userId) < 1)) return NextResponse.json({ error: "Choose a valid user filter." }, { status: 400 });
@@ -51,8 +55,8 @@ export async function GET(request: Request) {
     `SELECT id, user_id, user_name, user_role, action_type, target_type, target_id, target_title, ip_address,
             DATE_FORMAT(occurred_at, '%Y-%m-%d %H:%i:%s') AS occurred_at_utc
        FROM admin_activity_logs ${where}
-      ORDER BY occurred_at DESC, id DESC LIMIT ? OFFSET ?`,
-    [...values, pageSize, offset],
+      ORDER BY occurred_at DESC, id DESC LIMIT ${pageSize} OFFSET ${offset}`,
+    values,
   );
 
   const [users] = await db.execute<Array<RowDataPacket & {
