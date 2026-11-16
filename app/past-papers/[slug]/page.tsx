@@ -6,6 +6,7 @@ import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { QuizRunner } from "@/components/QuizRunner";
 import { getPaper, getQuestionsForPaper, getTopics, toPublicQuestion } from "@/lib/data";
 import { getLearnerPrincipal } from "@/lib/learner-auth";
+import { LoadingState } from "@/components/LoadingState";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -59,5 +60,5 @@ async function PaperContent({ params }: Props) {
 }
 
 export default function PaperPage({ params }: Props) {
-  return <Suspense fallback={<main className="content-page"><div className="loading-panel">Loading past paper…</div></main>}><PaperContent params={params} /></Suspense>;
+  return <Suspense fallback={<main className="content-page"><LoadingState label="Loading past paper…" variant="section" /></main>}><PaperContent params={params} /></Suspense>;
 }
