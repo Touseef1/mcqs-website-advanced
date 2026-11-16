@@ -4,7 +4,20 @@ import { SubjectCard } from "@/components/SubjectCard";
 import { getPapers, getSubjects, getTopics } from "@/lib/data";
 
 export default async function Home() {
-  const [subjects, topics, papers] = await Promise.all([getSubjects(), getTopics(), getPapers()]);
+  // Wait for every cached data read to settle before propagating a failure.
+  // Promise.all rejects early and can leave sibling cache reads running after
+  // the route render has already unwound.
+  const [subjectsResult, topicsResult, papersResult] = await Promise.allSettled([
+    getSubjects(),
+    getTopics(),
+    getPapers(),
+  ]);
+  if (subjectsResult.status === "rejected") throw subjectsResult.reason;
+  if (topicsResult.status === "rejected") throw topicsResult.reason;
+  if (papersResult.status === "rejected") throw papersResult.reason;
+  const subjects = subjectsResult.value;
+  const topics = topicsResult.value;
+  const papers = papersResult.value;
   const totalQuestions = topics.reduce((sum, topic) => sum + topic.questionCount, 0);
 
   return (
