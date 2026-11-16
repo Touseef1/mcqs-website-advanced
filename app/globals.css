@@ -3370,3 +3370,50 @@ body:has(.admin-dashboard) { background: #f1f2f7; }
   }
   .section-topics .popular-topic small { font-size: 11px; line-height: 1.35; }
 }
+
+
+/* Shared loading feedback for page sections, inline panels, and submit buttons. */
+.loading-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 13px;
+  color: var(--muted, #728078);
+  text-align: center;
+}
+.loading-state-section {
+  min-height: 48vh;
+  width: 100%;
+  box-sizing: border-box;
+}
+.loading-state-inline {
+  min-height: 150px;
+  padding: 22px;
+  border-color: transparent;
+  background: transparent;
+}
+.loading-spinner {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border: 3px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-top-color: var(--green, #0d8063);
+  border-radius: 50%;
+  animation: mcqpath-loading-spin .8s linear infinite;
+}
+.loading-spinner-small { width: 16px; height: 16px; border-width: 2px; }
+.loading-spinner-large { width: 42px; height: 42px; border-width: 4px; }
+.button-spinner {
+  display: inline-block;
+  flex: 0 0 auto;
+  animation: mcqpath-loading-spin .8s linear infinite;
+}
+.button-primary .button-spinner { color: currentColor; }
+@keyframes mcqpath-loading-spin { to { transform: rotate(360deg); } }
+:root[data-theme="dark"] .loading-state { color: #c1cbc7; }
+:root[data-theme="dark"] .loading-state-inline { background: transparent; }
+@media (prefers-reduced-motion: reduce) {
+  .loading-spinner, .button-spinner { animation-duration: 1.8s; }
+}
