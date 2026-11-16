@@ -5,6 +5,7 @@ import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { QuizRunner } from "@/components/QuizRunner";
 import { getPublicQuestions, getTopic } from "@/lib/data";
 import { getLearnerPrincipal } from "@/lib/learner-auth";
+import { LoadingState } from "@/components/LoadingState";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -32,5 +33,5 @@ async function QuizContent({ params }: Props) {
 }
 
 export default function QuizPage({ params }: Props) {
-  return <Suspense fallback={<main className="content-page"><div className="loading-panel">Loading quiz…</div></main>}><QuizContent params={params} /></Suspense>;
+  return <Suspense fallback={<main className="content-page"><LoadingState label="Loading quiz questions…" variant="section" /></main>}><QuizContent params={params} /></Suspense>;
 }
