@@ -46,7 +46,9 @@ export async function GET() {
      FROM papers p JOIN exams e ON e.id = p.exam_id
      LEFT JOIN paper_questions pq ON pq.paper_id = p.id
      LEFT JOIN questions q ON q.id = pq.question_id
-     GROUP BY p.id ORDER BY p.year DESC, p.id DESC`,
+     GROUP BY p.id, p.exam_id, e.name, p.title, p.slug, p.year, p.paper_type,
+              p.description, p.status, p.shift_session, p.expected_question_count
+     ORDER BY p.year DESC, p.id DESC`,
   );
   const [links] = await db.execute<Array<RowDataPacket & { paper_id: number; question_id: number }>>(
     "SELECT paper_id, question_id FROM paper_questions ORDER BY paper_id, question_order",

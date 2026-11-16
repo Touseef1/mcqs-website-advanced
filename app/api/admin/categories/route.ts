@@ -28,14 +28,17 @@ export async function GET() {
   const [subjects] = await db.execute<Array<RowDataPacket & { id: number; name: string; slug: string; description: string; status: string; topic_count: number }>>(
     `SELECT s.id, s.name, s.slug, s.description, s.status, COUNT(t.id) AS topic_count
      FROM subjects s LEFT JOIN topics t ON t.subject_id = s.id
-     GROUP BY s.id ORDER BY s.sort_order, s.name`,
+     GROUP BY s.id, s.name, s.slug, s.description, s.status, s.sort_order
+     ORDER BY s.sort_order, s.name`,
   );
   const [topics] = await db.execute<Array<RowDataPacket & { id: number; subject_id: number; subject_name: string; name: string; slug: string; description: string; status: string; question_count: number }>>(
     `SELECT t.id, t.subject_id, s.name AS subject_name, t.name, t.slug, t.description, t.status,
             COUNT(q.id) AS question_count
      FROM topics t JOIN subjects s ON s.id = t.subject_id
      LEFT JOIN questions q ON q.topic_id = t.id
-     GROUP BY t.id ORDER BY s.sort_order, t.sort_order, t.name`,
+     GROUP BY t.id, t.subject_id, s.name, t.name, t.slug, t.description, t.status,
+              s.sort_order, t.sort_order
+     ORDER BY s.sort_order, t.sort_order, t.name`,
   );
   return NextResponse.json({ subjects, topics }, { headers: { "Cache-Control": "no-store" } });
 }

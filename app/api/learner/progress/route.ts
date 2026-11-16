@@ -40,7 +40,8 @@ export async function GET() {
     `SELECT t.slug, t.name AS topic_name, s.name AS subject_name, COUNT(*) AS attempted,
             SUM(qa.is_correct) AS correct
        FROM quiz_attempt_answers qa JOIN topics t ON t.id = qa.topic_id JOIN subjects s ON s.id = t.subject_id
-      WHERE qa.learner_id = ? AND qa.selected_choice IS NOT NULL GROUP BY t.id
+      WHERE qa.learner_id = ? AND qa.selected_choice IS NOT NULL
+      GROUP BY t.id, t.slug, t.name, s.name
      HAVING COUNT(*) >= 2 AND SUM(qa.is_correct) / COUNT(*) < 0.6
       ORDER BY SUM(qa.is_correct) / COUNT(*) ASC, COUNT(*) DESC LIMIT 6`, [learner.id],
   );

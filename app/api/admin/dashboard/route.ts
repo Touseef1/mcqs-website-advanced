@@ -14,13 +14,14 @@ export async function GET() {
        FROM topics t JOIN subjects s ON s.id = t.subject_id
        LEFT JOIN questions q ON q.topic_id = t.id AND q.status != 'archived'
       WHERE s.status != 'archived' AND t.status != 'archived'
-      GROUP BY s.id, t.id ORDER BY s.name, t.name`,
+      GROUP BY s.id, s.name, t.id, t.name ORDER BY s.name, t.name`,
   );
   const [shortPapers] = await db.execute<Array<RowDataPacket & { id: number; title: string; expected_question_count: number; question_count: number }>>(
     `SELECT p.id, p.title, p.expected_question_count, COUNT(pq.question_id) AS question_count
        FROM papers p LEFT JOIN paper_questions pq ON pq.paper_id = p.id
       WHERE p.status != 'archived' AND p.expected_question_count IS NOT NULL
-      GROUP BY p.id HAVING COUNT(pq.question_id) < p.expected_question_count
+      GROUP BY p.id, p.title, p.expected_question_count, p.year
+     HAVING COUNT(pq.question_id) < p.expected_question_count
       ORDER BY p.year DESC, p.id DESC LIMIT 50`,
   );
   return NextResponse.json({
