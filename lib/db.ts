@@ -15,5 +15,10 @@ export const db = hasDatabase
       connectionLimit: Number(process.env.DB_POOL_SIZE ?? 10),
       queueLimit: 0,
       charset: "utf8mb4",
+      // TiDB Cloud public endpoints require TLS. Keep this opt-in so local
+      // MySQL installations can continue using their existing configuration.
+      ssl: process.env.DB_SSL === "true"
+        ? { minVersion: "TLSv1.2", rejectUnauthorized: true }
+        : undefined,
     })
   : null;
