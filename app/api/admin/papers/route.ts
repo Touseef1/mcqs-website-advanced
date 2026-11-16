@@ -41,13 +41,17 @@ export async function GET() {
   const [papers] = await db.execute<Array<RowDataPacket & { id: number; exam_id: number; exam_name: string; title: string; slug: string; year: number; type: string; description: string; status: string; question_count: number; published_question_count: number; shift_session: string | null; expected_question_count: number | null }>>(
     `SELECT p.id, p.exam_id, e.name AS exam_name, p.title, p.slug, p.year,
             p.paper_type AS type, p.description, p.status, p.shift_session, p.expected_question_count,
-            COUNT(pq.question_id) AS question_count,
-            COUNT(CASE WHEN q.status = 'published' THEN 1 END) AS published_question_count
+            COALESCE(paper_counts.question_count, 0) AS question_count,
+            COALESCE(paper_counts.published_question_count, 0) AS published_question_count
      FROM papers p JOIN exams e ON e.id = p.exam_id
-     LEFT JOIN paper_questions pq ON pq.paper_id = p.id
-     LEFT JOIN questions q ON q.id = pq.question_id
-     GROUP BY p.id, p.exam_id, e.name, p.title, p.slug, p.year, p.paper_type,
-              p.description, p.status, p.shift_session, p.expected_question_count
+     LEFT JOIN (
+       SELECT pq.paper_id,
+              COUNT(pq.question_id) AS question_count,
+              COUNT(CASE WHEN q.status = 'published' THEN 1 END) AS published_question_count
+       FROM paper_questions pq
+       LEFT JOIN questions q ON q.id = pq.question_id
+       GROUP BY pq.paper_id
+     ) paper_counts ON paper_counts.paper_id = p.id
      ORDER BY p.year DESC, p.id DESC`,
   );
   const [links] = await db.execute<Array<RowDataPacket & { paper_id: number; question_id: number }>>(
