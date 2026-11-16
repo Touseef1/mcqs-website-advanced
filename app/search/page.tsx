@@ -12,6 +12,7 @@ export const metadata: Metadata = {
   description: "Search subjects, topics, source-referenced MCQs, and verified past-paper resources.",
   robots: { index: false, follow: true },
 };
+import { LoadingState } from "@/components/LoadingState";
 
 type Props = { searchParams: Promise<{ q?: string }> };
 
@@ -36,5 +37,5 @@ async function SearchResults({ searchParams }: Props) {
 }
 
 export default function SearchPage({ searchParams }: Props) {
-  return <main className="content-page search-page"><Breadcrumbs items={[{ label: "Search" }]} /><div className="page-intro"><span className="eyebrow">FIND YOUR NEXT QUESTION</span><h1>Search the library</h1></div><Suspense fallback={<div className="loading-panel">Finding matching study material…</div>}><SearchResults searchParams={searchParams} /></Suspense></main>;
+  return <main className="content-page search-page"><Breadcrumbs items={[{ label: "Search" }]} /><div className="page-intro"><span className="eyebrow">FIND YOUR NEXT QUESTION</span><h1>Search the library</h1></div><Suspense fallback={<LoadingState label="Finding matching study material…" variant="section" />}><SearchResults searchParams={searchParams} /></Suspense></main>;
 }
