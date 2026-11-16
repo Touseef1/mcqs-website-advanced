@@ -6,6 +6,7 @@ import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { QuizRunner } from "@/components/QuizRunner";
 import { getQuestions, getTopic, toPublicQuestion } from "@/lib/data";
 import { getLearnerPrincipal } from "@/lib/learner-auth";
+import { LoadingState } from "@/components/LoadingState";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -34,5 +35,5 @@ async function TopicContent({ params }: Props) {
 }
 
 export default function TopicPage({ params }: Props) {
-  return <Suspense fallback={<main className="content-page"><div className="loading-panel">Loading topic…</div></main>}><TopicContent params={params} /></Suspense>;
+  return <Suspense fallback={<main className="content-page"><LoadingState label="Loading topic…" variant="section" /></main>}><TopicContent params={params} /></Suspense>;
 }
