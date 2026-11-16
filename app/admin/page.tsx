@@ -3,6 +3,7 @@ import Link from "next/link";
 import { BookOpenCheck, LockKeyhole, ShieldCheck, UsersRound } from "lucide-react";
 import { Suspense } from "react";
 import { AdminDashboard } from "@/components/AdminDashboard";
+import { LoadingState } from "@/components/LoadingState";
 import { AdminLoginForm } from "@/components/AdminLoginForm";
 import { AdminPasswordChange } from "@/components/AdminPasswordChange";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -44,5 +45,5 @@ async function AdminPanel() {
 }
 
 export default function AdminPage() {
-  return <Suspense fallback={<main className="admin-page admin-page-wide"><div className="loading-panel">Loading admin workspace…</div></main>}><AdminPanel /></Suspense>;
+  return <Suspense fallback={<main className="admin-page admin-page-wide"><LoadingState label="Loading admin workspace…" variant="section" /></main>}><AdminPanel /></Suspense>;
 }
