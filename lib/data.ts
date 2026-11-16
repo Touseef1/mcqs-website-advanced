@@ -220,13 +220,19 @@ export async function getPapers(): Promise<Paper[]> {
   const [rows] = await db.execute<Array<PaperRow & { question_count: number; published_question_count: number }>>(
     `SELECT p.id, p.slug, p.title, e.name AS exam, p.year,
             p.paper_type AS type, p.description,
-            COUNT(pq.question_id) AS question_count,
-            COUNT(CASE WHEN q.status = 'published' THEN 1 END) AS published_question_count
+            COALESCE(paper_counts.question_count, 0) AS question_count,
+            COALESCE(paper_counts.published_question_count, 0) AS published_question_count
      FROM papers p JOIN exams e ON e.id = p.exam_id
-     LEFT JOIN paper_questions pq ON pq.paper_id = p.id
-     LEFT JOIN questions q ON q.id = pq.question_id
+     LEFT JOIN (
+       SELECT pq.paper_id,
+              COUNT(pq.question_id) AS question_count,
+              COUNT(CASE WHEN q.status = 'published' THEN 1 END) AS published_question_count
+       FROM paper_questions pq
+       LEFT JOIN questions q ON q.id = pq.question_id
+       GROUP BY pq.paper_id
+     ) paper_counts ON paper_counts.paper_id = p.id
      WHERE p.status = 'published'
-     GROUP BY p.id ORDER BY p.year DESC, p.id DESC`,
+     ORDER BY p.year DESC, p.id DESC`,
   );
   const papers: Paper[] = [];
   for (const row of rows) {
