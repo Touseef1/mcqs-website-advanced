@@ -3417,3 +3417,73 @@ body:has(.admin-dashboard) { background: #f1f2f7; }
 @media (prefers-reduced-motion: reduce) {
   .loading-spinner, .button-spinner { animation-duration: 1.8s; }
 }
+
+
+/* Keep learner dashboard text and cards comfortable on narrow screens. */
+@media (max-width: 680px) {
+  .account-dashboard { gap: 14px; padding: 14px 0 32px; }
+  .account-heading { gap: 10px; padding: 2px 0 4px; }
+  .account-heading h1 { margin: 5px 0 4px; font-size: clamp(23px, 6vw, 27px); line-height: 1.18; letter-spacing: -.025em; }
+  .account-heading > div > p { font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+  .account-heading .button { min-height: 36px; padding: 7px 11px; font-size: 12px; }
+  .account-metrics { gap: 7px; }
+  .account-metrics article { min-height: 76px; padding: 10px 9px; gap: 9px; border-radius: 9px; }
+  .account-metrics span { font-size: 10px; line-height: 1.3; }
+  .account-metrics strong { font-size: 23px; line-height: 1; }
+  .account-section { padding: 14px; border-radius: 10px; }
+  .account-section-heading { align-items: flex-start; gap: 8px; margin-bottom: 10px; }
+  .account-section-heading h2 { margin-top: 3px; font-size: 19px; line-height: 1.25; letter-spacing: -.015em; }
+  .account-section-heading > a { flex: 0 0 auto; padding-top: 15px; font-size: 11px; }
+  .account-section-heading > span { max-width: 11ch; padding-top: 13px; font-size: 10px; line-height: 1.35; text-align: right; }
+  .account-attempt-list article { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 5px 9px; padding: 11px 0; }
+  .account-attempt-list article strong { font-size: 13px; line-height: 1.35; }
+  .account-attempt-list article > b { font-size: 12px; }
+  .account-attempt-list small { margin-top: 3px; font-size: 11px; }
+  .account-attempt-list article > a { grid-column: 1 / -1; justify-self: end; margin: 0; font-size: 11px; }
+  .subject-performance-grid { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .subject-performance-card { padding: 12px; }
+  .subject-performance-heading { gap: 8px; }
+  .subject-performance-heading h3 { font-size: 13px; line-height: 1.35; }
+  .subject-performance-heading small { font-size: 11px; line-height: 1.4; }
+  .subject-performance-heading > strong { font-size: 16px; }
+  .subject-performance-track { height: 6px; margin: 9px 0; }
+  .subject-topic-breakdown { font-size: 11px; line-height: 1.45; }
+  .subject-topic-breakdown li { align-items: baseline; font-size: 11px; }
+  .wrong-topic-list { gap: 8px; }
+  .wrong-topic-header { gap: 8px; padding: 11px 12px; }
+  .wrong-topic-toggle { gap: 3px; }
+  .wrong-topic-toggle span { font-size: 10px; }
+  .wrong-topic-toggle strong { font-size: 13px; line-height: 1.35; }
+  .wrong-topic-toggle small { font-size: 11px; }
+  .wrong-topic-actions { justify-content: flex-start; gap: 7px; }
+  .wrong-topic-remove { padding: 7px 9px; font-size: 10px; }
+  .wrong-topic-card > .quiz-layout { padding: 0 9px 9px; }
+  .account-empty { padding: 11px 0; font-size: 12px; line-height: 1.55; }
+  .account-saved-list article { gap: 10px; padding: 12px 0; }
+  .account-saved-list article p { font-size: 13px; line-height: 1.55; }
+  .account-saved-actions { align-self: stretch; justify-content: flex-end; font-size: 11px; }
+  .account-saved-actions button, .account-saved-actions a { font-size: 11px; }
+}
+
+@media (max-width: 380px) {
+  .account-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .account-metrics article:last-child { grid-column: 1 / -1; min-height: 65px; }
+  .account-heading h1 { font-size: 23px; }
+  .account-section { padding: 12px; }
+  .account-section-heading h2 { font-size: 18px; }
+}
+
+:root[data-theme="dark"] .account-section-heading h2,
+:root[data-theme="dark"] .account-attempt-list article strong,
+:root[data-theme="dark"] .account-attempt-list article > b,
+:root[data-theme="dark"] .account-saved-list article p { color: #edf4ef; }
+:root[data-theme="dark"] .account-metrics span,
+:root[data-theme="dark"] .account-attempt-list small,
+:root[data-theme="dark"] .account-empty,
+:root[data-theme="dark"] .account-section-heading > span { color: #b8c8bf; }
+:root[data-theme="dark"] .account-attempt-list article,
+:root[data-theme="dark"] .account-saved-list article { border-color: #34463c; }
+:root:not([data-theme="dark"]) .account-metrics span,
+:root:not([data-theme="dark"]) .account-attempt-list small,
+:root:not([data-theme="dark"]) .account-empty,
+:root:not([data-theme="dark"]) .account-section-heading > span { color: #5d6d63; }
