@@ -3287,3 +3287,86 @@ body:has(.admin-dashboard) { background: #f1f2f7; }
   .header-account-link { min-width: 40px; max-width: 148px; min-height: 36px; padding-inline: 9px; font-size: 11px; }
   .header-account-link.is-signed-in span { max-width: 86px; }
 }
+
+/* Homepage summary and section links: compact, aligned, and readable at every width. */
+.stats-strip { background: var(--white); }
+.stats-inner {
+  max-width: 1240px;
+  min-height: 0;
+  padding: 16px 28px;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(190px, 1.3fr);
+  gap: 10px;
+}
+.stats-inner > div:not(.stat-note) {
+  min-width: 0;
+  padding: 10px 12px;
+  gap: 9px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+}
+.stats-inner strong { font-size: 23px; line-height: 1; }
+.stats-inner > div:not(.stat-note) span { line-height: 1.25; }
+.stat-note { justify-content: center; font-size: 11px; line-height: 1.5; }
+.text-link { white-space: nowrap; }
+
+@media (max-width: 900px) {
+  .stats-inner { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .stat-note { grid-column: 1 / -1; justify-content: flex-start; padding: 2px 3px; }
+}
+
+@media (max-width: 680px) {
+  .stats-inner {
+    padding: 14px 19px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .stats-inner > div:not(.stat-note) {
+    padding: 10px;
+    gap: 8px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+  }
+  .stats-inner > div:nth-child(2),
+  .stats-inner > div:nth-child(3) { border-right: 1px solid var(--line); }
+  .stats-inner strong { font-size: 22px; }
+  .stats-inner > div:not(.stat-note) span { font-size: 11px; line-height: 1.25; }
+  .stat-note {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+    padding: 5px 3px 1px;
+    font-size: 11px;
+  }
+  .section-heading {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    column-gap: 12px;
+    row-gap: 5px;
+  }
+  .section-heading > div { min-width: 0; }
+  .section-heading h2 { line-height: 1.12; }
+  .section-heading p { max-width: 34ch; line-height: 1.5; }
+  .section-heading .text-link {
+    align-self: start;
+    max-width: none;
+    margin: 24px 0 0;
+    font-size: 11px;
+    line-height: 1.35;
+    text-align: right;
+    white-space: nowrap;
+  }
+  .section-topics .topic-grid { grid-template-columns: minmax(0, 1fr); gap: 9px; }
+  .section-topics .popular-topic { min-height: 68px; padding: 12px; gap: 11px; }
+  .section-topics .popular-topic-icon { width: 34px; height: 34px; border-radius: 9px; font-size: 14px; }
+  .section-topics .popular-topic > span:last-child { flex: 1 1 auto; gap: 2px; }
+  .section-topics .popular-topic strong {
+    overflow: visible;
+    font-size: 14px;
+    line-height: 1.3;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .section-topics .popular-topic small { font-size: 11px; line-height: 1.35; }
+}
