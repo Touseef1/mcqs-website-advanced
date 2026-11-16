@@ -5,6 +5,7 @@ import type { PublicQuestion } from "@/lib/data";
 import { getErrorMessage, parseApiResponse } from "@/lib/error-message";
 import { notify } from "@/lib/toast";
 import { QuizRunner } from "@/components/QuizRunner";
+import { LoadingState } from "@/components/LoadingState";
 
 export function WrongQuestionsPanel() {
   const [questions, setQuestions] = useState<WrongQuestion[]>([]);
@@ -86,7 +87,7 @@ export function WrongQuestionsPanel() {
         <div><span className="eyebrow">TARGETED REVIEW</span><h2>Wrong questions</h2></div>
         {!loading && <span>{questions.length} questions across {topics.length} topics</span>}
       </div>
-      {loading ? <p className="account-empty">Loading your wrong questions…</p>
+      {loading ? <LoadingState label="Loading your wrong questions…" variant="inline" />
         : error ? <p className="account-empty">Your wrong questions could not be loaded. Refresh this page to try again.</p>
           : questions.length ? <div className="wrong-topic-list">{topics.map((topic) => {
             const expanded = expandedTopicId === topic.topicId;
