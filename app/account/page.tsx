@@ -8,6 +8,7 @@ export const metadata: Metadata = {
   description: "Review your quiz history, learning progress, and saved questions.",
   robots: { index: false, follow: false },
 };
+import { LoadingState } from "@/components/LoadingState";
 
 async function AccountContent() {
   const learner = await getLearnerPrincipal();
@@ -15,5 +16,5 @@ async function AccountContent() {
 }
 
 export default function AccountPage() {
-  return <Suspense fallback={<main className="content-page account-page"><div className="loading-panel">Loading your account…</div></main>}><AccountContent /></Suspense>;
+  return <Suspense fallback={<main className="content-page account-page"><LoadingState label="Loading your account…" variant="section" /></main>}><AccountContent /></Suspense>;
 }
