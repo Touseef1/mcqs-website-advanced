@@ -1,7 +1,7 @@
 "use client";
 
-import { RotateCw } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { LoaderCircle, RotateCw } from "lucide-react";
+import { useEffect, useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { getErrorMessage, parseApiResponse } from "@/lib/error-message";
 import { notify } from "@/lib/toast";
@@ -14,6 +14,8 @@ export function AdminLoginForm() {
   const [captchaAnswer, setCaptchaAnswer] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [isPending, startTransition] = useTransition();
+  const submitting = busy || isPending;
 
   async function refreshCaptcha() {
     setCaptchaAnswer("");
@@ -52,7 +54,7 @@ export function AdminLoginForm() {
         body: JSON.stringify({ email, password, captchaAnswer }),
       });
       await parseApiResponse(response, "Sign-in failed.");
-      router.refresh();
+      startTransition(() => router.refresh());
     } catch (signInError) {
       const message = getErrorMessage(signInError, "Sign-in failed."); setError(message); notify.error(message);
     } finally {
@@ -69,7 +71,7 @@ export function AdminLoginForm() {
       <input id="admin-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" placeholder="Enter your password" required />
       <div className="admin-captcha-row"><div className="admin-captcha-code" role="img" aria-label={`Security code ${captchaCode || "not loaded"}`}>{captchaCode || "----"}</div><button className="admin-captcha-refresh" type="button" aria-label="Get a new security code" onClick={() => void refreshCaptcha()}><RotateCw size={18} /></button><input id="admin-captcha-answer" aria-label="Four-digit CAPTCHA" type="text" inputMode="numeric" pattern="[0-9]{4}" autoComplete="off" maxLength={4} placeholder="Enter 4-digit code" value={captchaAnswer} onChange={(event) => setCaptchaAnswer(event.target.value.replace(/\D/g, "").slice(0, 4))} required /></div>
       {error && <p className="form-error" role="alert">{error}</p>}
-      <button className="button button-primary" type="submit" disabled={busy}>{busy ? "Signing in…" : "Sign in"} <span aria-hidden>→</span></button>
+      <button className="button button-primary" type="submit" disabled={submitting}>{submitting ? <><LoaderCircle className="button-spinner" size={17} aria-hidden="true" /> Signing in…</> : <>Sign in <span aria-hidden>→</span></>}</button>
     </form>
   );
 }
