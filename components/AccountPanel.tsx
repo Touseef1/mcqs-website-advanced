@@ -27,6 +27,12 @@ type Progress = {
 };
 type SavedQuestion = { questionId: number; topicSlug: string; prompt: string; language?: "en" | "ur"; questionImageUrl?: string | null; choices: Array<{ label: string; text: string; imageUrl?: string | null }> };
 
+function progressTone(percentage: number) {
+  if (percentage > 90) return "progress-tone-strong";
+  if (percentage < 60) return "progress-tone-low";
+  return "progress-tone-medium";
+}
+
 export function AccountPanel({ learner }: { learner: LearnerPrincipal | null }) {
   const router = useRouter();
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -152,14 +158,31 @@ export function AccountPanel({ learner }: { learner: LearnerPrincipal | null }) 
       <div className="account-heading"><div><span className="eyebrow">YOUR STUDY SPACE</span><h1>Hello, {learner.name}</h1><p>{learner.email}</p></div><button className="button button-outline" onClick={() => void signOut()}>Sign out</button></div>
       <div className="account-metrics">
         <article><span>Quiz attempts</span><strong>{progressLoading ? <LoadingSpinner label="Loading quiz attempts" size="small" /> : progress?.summary.attempts ?? "—"}</strong></article>
-        <article><span>Average score</span><strong>{progressLoading ? <LoadingSpinner label="Loading average score" size="small" /> : progress ? `${progress.summary.averageScore}%` : "—"}</strong></article>
+        <article><span>Average score</span><strong className={progress ? progressTone(progress.summary.averageScore) : ""}>{progressLoading ? <LoadingSpinner label="Loading average score" size="small" /> : progress ? `${progress.summary.averageScore}%` : "—"}</strong></article>
         <article><span>Saved questions</span><strong>{progressLoading ? <LoadingSpinner label="Loading saved questions" size="small" /> : progress?.summary.savedQuestions ?? saved.length}</strong></article>
       </div>
       <section className="account-section"><div className="account-section-heading"><div><span className="eyebrow">KEEP IMPROVING</span><h2>Recent practice</h2></div><Link href="/subjects">Find a quiz →</Link></div>
-        {!progress ? <p className="account-empty">Loading your quiz history…</p> : progress.attempts.length ? <div className="account-attempt-list">{progress.attempts.map((attempt) => <article key={attempt.id}><div><strong>{attempt.quiz_title}</strong><small>{new Date(attempt.completed_at).toLocaleDateString()}</small></div><b>{attempt.score} out of {attempt.question_count}<small>{attempt.question_count ? Math.round(attempt.score / attempt.question_count * 100) : 0}%</small></b><Link href={attempt.quiz_path}>Practise again</Link></article>)}</div> : <p className="account-empty">Your completed quizzes will appear here. <Link href="/subjects">Start practising</Link></p>}
+        {!progress ? <p className="account-empty">Loading your quiz history…</p> : progress.attempts.length ? <div className="account-attempt-list">{progress.attempts.map((attempt) => {
+          const attemptPercentage = attempt.question_count ? Math.round(attempt.score / attempt.question_count * 100) : 0;
+          return <article key={attempt.id}><div><strong>{attempt.quiz_title}</strong><small>{new Date(attempt.completed_at).toLocaleDateString()}</small></div><b>{attempt.score} out of {attempt.question_count}<small className={progressTone(attemptPercentage)}>{attemptPercentage}%</small></b><Link href={attempt.quiz_path}>Practise again</Link></article>;
+        })}</div> : <p className="account-empty">Your completed quizzes will appear here. <Link href="/subjects">Start practising</Link></p>}
       </section>
       {progressLoading && <section className="account-section account-progress-loading"><LoadingState label="Loading your progress…" variant="inline" /></section>}
-      {!!progress?.subjectPerformance?.length && <section className="account-section"><div className="account-section-heading"><div><span className="eyebrow">YOUR PROGRESS</span><h2>Subject performance</h2></div><span>Based on answered questions</span></div><div className="subject-performance-grid">{progress.subjectPerformance.map((subject) => <article className="subject-performance-card" key={subject.subjectId}><div className="subject-performance-heading"><div><h3>{subject.subjectName}</h3><small>{subject.correct} correct out of {subject.attempted}</small></div><strong>{subject.percentage}%</strong></div><div className="subject-performance-track" role="progressbar" aria-label={`${subject.subjectName} correct answer rate`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={subject.percentage}><span style={{ width: `${subject.percentage}%` }} /></div><details className="subject-topic-breakdown"><summary>Topic breakdown ({subject.topics.length})</summary><ul>{subject.topics.map((topic) => <li key={topic.id}><span>{topic.name}</span><b>{topic.correct}/{topic.attempted} · {topic.percentage}%</b></li>)}</ul></details></article>)}</div></section>}
+      {!!progress?.subjectPerformance?.length && <section className="account-section"><div className="account-section-heading"><div><span className="eyebrow">YOUR PROGRESS</span><h2>Subject performance</h2></div><span>Based on answered questions</span></div><div className="subject-performance-grid">{progress.subjectPerformance.map((subject) => {
+        const tone = progressTone(subject.percentage);
+        return <article className="subject-performance-card" key={subject.subjectId}>
+          <div className="subject-performance-heading"><div><h3>{subject.subjectName}</h3><small>{subject.correct} correct out of {subject.attempted}</small></div><strong className={`subject-performance-value ${tone}`}>{subject.percentage}%</strong></div>
+          <div className={`subject-performance-track ${tone}`} role="progressbar" aria-label={`${subject.subjectName} correct answer rate`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={subject.percentage}><span style={{ width: `${subject.percentage}%` }} /></div>
+          <details className="subject-topic-breakdown"><summary>Topic breakdown ({subject.topics.length})</summary><ul>{subject.topics.map((topic) => {
+            const topicTone = progressTone(topic.percentage);
+            return <li key={topic.id}>
+              <div className="subject-topic-row"><span className="subject-topic-name">{topic.name}<small>{topic.correct} correct out of {topic.attempted}</small></span>
+                <div className="subject-topic-progress"><b className={topicTone}>{topic.percentage}%</b><div className={`subject-topic-track ${topicTone}`} role="progressbar" aria-label={`${topic.name} correct answer rate`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={topic.percentage}><span style={{ width: `${topic.percentage}%` }} /></div></div>
+              </div>
+            </li>;
+          })}</ul></details>
+        </article>;
+      })}</div></section>}
       {!!progress?.weakTopics?.length && <section className="account-section"><div className="account-section-heading"><div><span className="eyebrow">PERSONALIZED PRACTICE</span><h2>Topics to strengthen</h2></div></div><div className="account-attempt-list">{progress.weakTopics.map((topic) => <article key={topic.slug}><div><strong>{topic.subject_name} · {topic.topic_name}</strong><small>{topic.correct} correct out of {topic.attempted}</small></div><Link href={`/quiz/${encodeURIComponent(topic.slug)}`}>Practise topic</Link></article>)}</div></section>}
       <WrongQuestionsPanel />
       <section className="account-section"><div className="account-section-heading"><div><span className="eyebrow">REVISIT ANYTIME</span><h2>Saved questions</h2></div></div>
