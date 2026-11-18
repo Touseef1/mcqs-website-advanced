@@ -21,7 +21,10 @@ function isSupportedListingPath(pathname: string) {
   const normalized = decoded.replace(/\/+$/, "") || "/";
   if (normalized.toLowerCase() === "/all-mcqs-categories") return true;
   const match = normalized.match(/^\/(important-mcqs|subcategory-mcqs)\/([^/]+)$/i);
-  return Boolean(match && match[2].length <= 180 && /^[\p{L}\p{N}&-]+$/u.test(match[2]));
+  // TestPoint uses commas in some subcategory slugs, for example
+  // "محاورے-,-idioms-in-urdu". Keep the slug character allowlist narrow
+  // while accepting that punctuation so valid listing URLs reach the fetcher.
+  return Boolean(match && match[2].length <= 180 && /^[\p{L}\p{N}&,-]+$/u.test(match[2]));
 }
 
 function decodedPath(pathname: string) {
