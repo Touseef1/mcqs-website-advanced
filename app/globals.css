@@ -3517,3 +3517,56 @@ body:has(.admin-dashboard) { background: #f1f2f7; }
 :root:not([data-theme="dark"]) .account-attempt-list small,
 :root:not([data-theme="dark"]) .account-empty,
 :root:not([data-theme="dark"]) .account-section-heading > span { color: #5d6d63; }
+
+
+/* Show an unmistakable local selection while the server checks the answer. */
+.choice-option.is-checking,
+.choice-option.is-checking.selected {
+  border-color: #16876b;
+  background: #e8f6f1;
+  color: #173f34;
+  box-shadow: 0 0 0 2px rgba(22, 135, 107, .12);
+  transition: none;
+}
+.choice-option.is-checking .choice-label,
+.choice-option.is-checking.selected .choice-label {
+  border-color: #16876b;
+  background: #16876b;
+  color: #fff;
+}
+.answer-checking {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 9px 0 0;
+  color: #28765f;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.answer-checking-spinner {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+  border: 2px solid rgba(22, 135, 107, .22);
+  border-top-color: #16876b;
+  border-radius: 50%;
+  animation: mcqpath-loading-spin .7s linear infinite;
+}
+:root[data-theme="dark"] .choice-option.is-checking,
+:root[data-theme="dark"] .choice-option.is-checking.selected {
+  border-color: #67c5a2;
+  background: #1c3b31;
+  color: #e2f5ec;
+  box-shadow: 0 0 0 2px rgba(103, 197, 162, .15);
+}
+:root[data-theme="dark"] .choice-option.is-checking .choice-label,
+:root[data-theme="dark"] .choice-option.is-checking.selected .choice-label {
+  border-color: #67c5a2;
+  background: #26775e;
+  color: #fff;
+}
+:root[data-theme="dark"] .answer-checking { color: #9ddcc3; }
+:root[data-theme="dark"] .answer-checking-spinner {
+  border-color: rgba(103, 197, 162, .25);
+  border-top-color: #67c5a2;
+}
