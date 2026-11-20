@@ -253,15 +253,17 @@ export function QuizRunner({ questions, title, quizSlug, quizPath, canBookmark =
                   {question.choices.map((choice) => {
                     const inputId = `question-${question.id}-${choice.label}`;
                     const selected = answers[question.id] === choice.label;
+                    const checking = mode === "quiz" && selected && pending;
                     const isCorrect = revealed?.correctChoice === choice.label;
                     const isWrong = Boolean(revealed && selected && !isCorrect);
-                    const classNames = ["choice-option", selected && "selected", revealed && isCorrect && "is-revealed-correct", isWrong && "is-revealed-wrong"].filter(Boolean).join(" ");
-                    return <div className={classNames} key={choice.label} onClick={(event) => { if (!(event.target instanceof HTMLInputElement) && !(event.target instanceof HTMLButtonElement)) chooseAnswer(question.id, choice.label); }}>
+                    const classNames = ["choice-option", selected && "selected", checking && "is-checking", revealed && isCorrect && "is-revealed-correct", isWrong && "is-revealed-wrong"].filter(Boolean).join(" ");
+                    return <div className={classNames} key={choice.label} aria-busy={checking || undefined} onClick={(event) => { if (!(event.target instanceof HTMLInputElement) && !(event.target instanceof HTMLButtonElement)) chooseAnswer(question.id, choice.label); }}>
                       {mode === "quiz" && <input id={inputId} type="radio" name={`question-${question.id}`} aria-label={`Option ${choice.label}`} value={choice.label} checked={selected} disabled={loading || pending || locked} onChange={() => chooseAnswer(question.id, choice.label)} />}
                       <span className={`choice-label${isWrong ? " is-wrong" : ""}`}>{choice.label}</span><div className="choice-content">{choice.text && <span className="choice-text"><LocalizedText>{choice.text}</LocalizedText></span>}{choice.imageUrl && <MCQImage src={choice.imageUrl} alt={`Option ${choice.label} image`} size="option" onActivate={mode === "quiz" ? () => chooseAnswer(question.id, choice.label) : undefined} />}</div>
                     </div>;
                   })}
                 </div>
+                {mode === "quiz" && pending && answers[question.id] && <p className="answer-checking" role="status"><span className="answer-checking-spinner" aria-hidden="true" />Checking your answer…</p>}
                 {mode === "read" && (revealed ? <div className="revealed-answer" role="status"><strong>Correct answer: {revealed.correctChoice}</strong></div> : <p className="answer-loading" role="status">{error ? "Answer could not be loaded. Refresh to try again." : "Loading answer…"}</p>)}
                 {mode === "quiz" && revealed && <span className="sr-only" role="status">Answer checked.</span>}
                 {question.explanation && <details className="question-explanation">
